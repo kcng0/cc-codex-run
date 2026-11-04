@@ -1,6 +1,6 @@
 {
   "name": "codex-run",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Delegate tasks, questions and reviews to OpenAI Codex through the local Codex app-server daemon",
   "author": {
     "name": "kcng0"

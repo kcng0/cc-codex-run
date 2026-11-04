@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.2 — 2026-11-04
+
+- The `codex` skill calls its script as `node <path>`, so it works when an installer drops the executable bit (cc-switch installs from GitHub did, giving "Permission denied").
+
 ## 0.1.1 — 2026-11-04
 
 - Published to npm as `cc-codex-run`. No code changes.

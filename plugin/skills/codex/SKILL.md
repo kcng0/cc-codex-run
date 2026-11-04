@@ -1,12 +1,12 @@
 ---
 name: codex
 description: Run tasks on OpenAI Codex through the local Codex app-server daemon — pick a role or model, run several in the background, answer Codex's questions, resume a thread by id, or run Codex's built-in review. Use whenever you need to call Codex.
-allowed-tools: Bash(${CLAUDE_SKILL_DIR}/scripts/codex-run.mjs *)
+allowed-tools: Bash(node ${CLAUDE_SKILL_DIR}/scripts/codex-run.mjs *)
 ---
 
 # Calling Codex
 
-Script: `${CLAUDE_SKILL_DIR}/scripts/codex-run.mjs` (always call it by this full path; `-h` lists options). Tasks run on the local Codex app-server daemon (started automatically). Thread names start with `[codex-run·<role>]`, and the user can watch or take over them in the Codex app.
+Script: `node ${CLAUDE_SKILL_DIR}/scripts/codex-run.mjs` (always call it with `node` and this full path, since some installers drop the executable bit; `-h` lists options). Tasks run on the local Codex app-server daemon (started automatically). Thread names start with `[codex-run·<role>]`, and the user can watch or take over them in the Codex app.
 
 ## Dispatching
 
@@ -14,7 +14,7 @@ Script: `${CLAUDE_SKILL_DIR}/scripts/codex-run.mjs` (always call it by this full
 2. Run it with Bash `run_in_background: true`:
 
    ```bash
-   ${CLAUDE_SKILL_DIR}/scripts/codex-run.mjs --role <role> -C <workdir> <task file>
+   node ${CLAUDE_SKILL_DIR}/scripts/codex-run.mjs --role <role> -C <workdir> <task file>
    ```
 
    - **Roles** set the responsibilities and the default model, effort and sandbox. `--roles` lists them; roles in `$CODEX_HOME/agents/` shadow the bundled examples. If the task is clearly lighter or harder than the role's default, override with `-m`/`-e` (pick from `--models`). If results are weak, first tighten the task (definition of done, verification), then start a new thread with higher effort.
@@ -65,7 +65,7 @@ Start a new thread, and hand over the needed conclusions in the task file, when:
 When unsure, start a new thread.
 
 ```bash
-${CLAUDE_SKILL_DIR}/scripts/codex-run.mjs --resume <thread> --role <same role> -C <same dir> <follow-up file>
+node ${CLAUDE_SKILL_DIR}/scripts/codex-run.mjs --resume <thread> --role <same role> -C <same dir> <follow-up file>
 ```
 
 Resume by thread id (parallel runs make "last thread" ambiguous). The follow-up file holds only the new instructions.
@@ -75,7 +75,7 @@ A resumed thread keeps its model and effort and does not accept `-m`/`-e`. `--ro
 ## Review
 
 ```bash
-${CLAUDE_SKILL_DIR}/scripts/codex-run.mjs --review [--base <branch> | --commit <sha>] -C <repo> [focus file]
+node ${CLAUDE_SKILL_DIR}/scripts/codex-run.mjs --review [--base <branch> | --commit <sha>] -C <repo> [focus file]
 ```
 
 Runs Codex's built-in read-only review of git changes; uncommitted changes (including untracked files) by default. The optional focus file names the risks to look at. `--review` takes no `--role`, `--resume`, `-s` or `--schema`.
