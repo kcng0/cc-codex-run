@@ -34,6 +34,14 @@ npm install -g cc-codex-run
 codex-run --install-skills          # 已有同名 codex / codex-delegate skill 时，加 --force 会先把它们改名备份
 ```
 
+也可以用 [skills CLI](https://github.com/vercel-labs/skills) 安装到当前项目（`.claude/skills/`），加 `-g` 则装到用户目录：
+
+```bash
+npx skills@latest add kcng0/cc-codex-run -a claude-code -s '*'
+```
+
+插件安装的 skill 带命名空间（`codex-run:codex`）。另外两种方式装的是不带命名空间的 `codex` 和 `codex-delegate`：如果 `~/.claude/skills` 里已有同名的个人 skill，它会优先于项目级安装的 skill 生效；用户级安装则可能把它覆盖掉。
+
 ## Skills
 
 - **`codex`**：教 Claude 用 `codex-run` 派发任务、答复提问、续接、重新跟随、停止和 review。

@@ -34,6 +34,14 @@ npm install -g cc-codex-run
 codex-run --install-skills          # add --force to move existing codex/codex-delegate skills aside
 ```
 
+With the [skills CLI](https://github.com/vercel-labs/skills), into the current project (`.claude/skills/`), or user-wide with `-g`:
+
+```bash
+npx skills@latest add kcng0/cc-codex-run -a claude-code -s '*'
+```
+
+The plugin namespaces its skills (`codex-run:codex`). The other two methods install plain `codex` and `codex-delegate` skills. If you already have a personal skill with one of those names in `~/.claude/skills`, it takes precedence over a project-level install, and a user-level install may replace it.
+
 ## Skills
 
 - **`codex`** teaches Claude how to dispatch, answer, resume, attach to, stop and review with `codex-run`.
