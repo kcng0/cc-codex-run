@@ -1,10 +1,17 @@
 {
   "name": "codex-run",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Delegate tasks, questions and reviews to OpenAI Codex through the local Codex app-server daemon",
-  "author": { "name": "kcng0" },
+  "author": {
+    "name": "kcng0"
+  },
   "license": "MIT",
   "repository": "https://github.com/kcng0/cc-codex-run",
   "homepage": "https://github.com/kcng0/cc-codex-run#readme",
-  "keywords": ["codex", "openai", "delegation", "review"]
+  "keywords": [
+    "codex",
+    "openai",
+    "delegation",
+    "review"
+  ]
 }

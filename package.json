@@ -1,6 +1,6 @@
 {
   "name": "cc-codex-run",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Claude Code skills and CLI for delegating work to OpenAI Codex through the local Codex app-server daemon",
   "type": "module",
   "bin": {

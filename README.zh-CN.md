@@ -27,7 +27,7 @@
 /plugin install codex-run@cc-codex-run
 ```
 
-也可以通过 npm 安装 CLI，再把 skills 复制到 `~/.claude/skills`（npm 包尚未发布）：
+也可以通过 npm 安装 CLI，再把 skills 复制到 `~/.claude/skills`：
 
 ```bash
 npm install -g cc-codex-run

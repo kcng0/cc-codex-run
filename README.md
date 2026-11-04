@@ -27,7 +27,7 @@ As a Claude Code plugin (recommended):
 /plugin install codex-run@cc-codex-run
 ```
 
-From npm (not published yet), as a CLI plus skills copied into `~/.claude/skills`:
+From npm, as a CLI plus skills copied into `~/.claude/skills`:
 
 ```bash
 npm install -g cc-codex-run

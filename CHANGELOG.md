@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.1 — 2026-11-04
+
+- Published to npm as `cc-codex-run`. No code changes.
+
 ## 0.1.0 — 2026-11-04
 
 First public version, extracted from a private Claude Code skill.

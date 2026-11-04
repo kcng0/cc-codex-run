@@ -43,4 +43,4 @@ When you rely on a new method or field, check it against that schema and raise `
 3. Run `npm test`, `npm run check:bundle` and `claude plugin validate .`.
 4. Commit, tag `vX.Y.Z`, and push the commit and the tag. Plugin users get the update through `/plugin update` because the plugin version changed.
 5. Create the GitHub release from that version's CHANGELOG section: `gh release create vX.Y.Z --title vX.Y.Z --notes-file <notes>`.
-6. `npm publish` (the package is not on npm yet; the first publish also drops "not published yet" from both READMEs).
+6. `npm publish`.
