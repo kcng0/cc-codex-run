@@ -1,0 +1,11 @@
+#!/usr/bin/env node
+// Fake `codex` CLI for tests: answers `app-server daemon start|version` with the fake server's socket.
+const [a, b, cmd] = process.argv.slice(2);
+if (a !== "app-server" || b !== "daemon") { console.error(`fake codex: unsupported ${process.argv.slice(2).join(" ")}`); process.exit(2); }
+if (cmd === "start") process.exit(0);
+if (cmd === "version") {
+  const v = process.env.FAKE_CODEX_VERSION || "0.164.0";
+  console.log(JSON.stringify({ status: "running", socketPath: process.env.FAKE_CODEX_SOCK, cliVersion: v, appServerVersion: v }));
+  process.exit(0);
+}
+process.exit(2);

@@ -1,0 +1,51 @@
+{
+  "name": "cc-codex-run",
+  "version": "0.1.0",
+  "description": "Claude Code skills and CLI for delegating work to OpenAI Codex through the local Codex app-server daemon",
+  "type": "module",
+  "bin": {
+    "codex-run": "plugin/skills/codex/scripts/codex-run.mjs"
+  },
+  "files": [
+    "plugin/",
+    "README.md",
+    "README.zh-CN.md",
+    "CHANGELOG.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "os": [
+    "linux",
+    "darwin"
+  ],
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "test": "node scripts/build.mjs && node --test \"test/*.test.mjs\"",
+    "check:bundle": "node scripts/build.mjs && git diff --exit-code -- plugin/",
+    "prepublishOnly": "npm test"
+  },
+  "keywords": [
+    "claude-code",
+    "claude-code-plugin",
+    "codex",
+    "openai-codex",
+    "agent",
+    "skills"
+  ],
+  "author": "kcng0",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/kcng0/cc-codex-run.git"
+  },
+  "homepage": "https://github.com/kcng0/cc-codex-run#readme",
+  "bugs": "https://github.com/kcng0/cc-codex-run/issues",
+  "devDependencies": {
+    "ajv": "^8.20.0",
+    "esbuild": "^0.28.2",
+    "smol-toml": "^1.9.1",
+    "ws": "^8.22.1"
+  }
+}

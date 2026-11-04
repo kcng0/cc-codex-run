@@ -1,0 +1,12 @@
+{
+  "name": "cc-codex-run",
+  "owner": { "name": "kcng0" },
+  "description": "codex-run: delegate work from Claude Code to OpenAI Codex",
+  "plugins": [
+    {
+      "name": "codex-run",
+      "source": "./plugin",
+      "description": "Delegate tasks, questions and reviews to OpenAI Codex through the local Codex app-server daemon"
+    }
+  ]
+}

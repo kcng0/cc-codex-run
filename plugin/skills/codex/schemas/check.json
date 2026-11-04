@@ -1,0 +1,99 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "status",
+    "summary",
+    "real_path",
+    "counterexamples",
+    "optional_issues",
+    "coverage",
+    "not_covered"
+  ],
+  "properties": {
+    "status": {
+      "type": "string",
+      "enum": [
+        "complete",
+        "partial",
+        "blocked"
+      ],
+      "description": "Whether the verification itself is finished, not whether the change passes: counterexamples found with full coverage is still complete; incomplete coverage is partial; unable to proceed is blocked"
+    },
+    "summary": {
+      "type": "string",
+      "description": "One-sentence conclusion; for partial / blocked, state why"
+    },
+    "real_path": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "entry",
+        "actual_behavior"
+      ],
+      "properties": {
+        "entry": {
+          "type": "string",
+          "description": "The real entry point that was actually triggered"
+        },
+        "actual_behavior": {
+          "type": "string",
+          "description": "The behavior actually observed after triggering it"
+        }
+      }
+    },
+    "counterexamples": {
+      "type": "array",
+      "description": "Only counterexamples that affect correctness or requirements",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "input",
+          "actual",
+          "expected",
+          "expected_source",
+          "location",
+          "impact"
+        ],
+        "properties": {
+          "input": {
+            "type": "string",
+            "description": "Triggering input or timing"
+          },
+          "actual": {
+            "type": "string"
+          },
+          "expected": {
+            "type": "string"
+          },
+          "expected_source": {
+            "type": "string",
+            "description": "Where the expected value comes from; must be outside the code under test"
+          },
+          "location": {
+            "type": "string",
+            "description": "file:line or module"
+          },
+          "impact": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "optional_issues": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "coverage": {
+      "type": "string",
+      "description": "Input space and paths covered"
+    },
+    "not_covered": {
+      "type": "string",
+      "description": "What was not covered and why"
+    }
+  }
+}
