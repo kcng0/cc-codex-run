@@ -1,0 +1,38 @@
+name: publish
+
+# Publishes to npm through trusted publishing (OIDC): no npm token is stored in the repository.
+# Runs on a pushed vX.Y.Z tag; workflow_dispatch publishes an existing tag.
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing tag to publish, e.g. v0.1.1"
+        required: true
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    env:
+      TAG: ${{ inputs.tag || github.ref_name }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: refs/tags/${{ env.TAG }}
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+      # Trusted publishing needs npm 11.5.1 or newer
+      - run: npm install -g npm@^11.5.1
+      - name: Tag matches package version
+        run: test "v$(node -p 'require("./package.json").version')" = "$TAG"
+      - run: npm ci
+      - run: npm test
+      - run: npm run check:bundle
+      - run: npm publish --access public --ignore-scripts

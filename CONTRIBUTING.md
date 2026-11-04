@@ -42,5 +42,5 @@ When you rely on a new method or field, check it against that schema and raise `
 2. Update `CHANGELOG.md`.
 3. Run `npm test`, `npm run check:bundle` and `claude plugin validate .`.
 4. Commit, tag `vX.Y.Z`, and push the commit and the tag. Plugin users get the update through `/plugin update` because the plugin version changed.
-5. Create the GitHub release from that version's CHANGELOG section: `gh release create vX.Y.Z --title vX.Y.Z --notes-file <notes>`.
-6. `npm publish`.
+5. Pushing the tag runs `.github/workflows/publish.yml`, which checks that the tag matches `package.json`, runs the tests and publishes to npm through trusted publishing (no npm token in the repository). To publish an existing tag again, run the workflow manually with that tag.
+6. Create the GitHub release from that version's CHANGELOG section: `gh release create vX.Y.Z --title vX.Y.Z --notes-file <notes>`.
