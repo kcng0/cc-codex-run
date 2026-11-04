@@ -12508,7 +12508,8 @@ function installSkills(dest, force) {
   if (clashes.length && !force) {
     throw new UsageError(`already exists in ${target}: ${clashes.join(", ")} (re-run with --force to move them aside)`);
   }
-  if (names.some((n) => path5.resolve(src, n) === path5.resolve(target, n))) {
+  const real = (p) => fs6.existsSync(p) ? fs6.realpathSync(p) : p;
+  if (names.some((n) => real(path5.join(src, n)) === real(path5.join(target, n)))) {
     throw new UsageError(`${target} is where this script is installed; run --install-skills from another copy`);
   }
   fs6.mkdirSync(target, { recursive: true });

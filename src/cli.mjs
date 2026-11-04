@@ -225,7 +225,9 @@ function installSkills(dest, force) {
   if (clashes.length && !force) {
     throw new UsageError(`already exists in ${target}: ${clashes.join(", ")} (re-run with --force to move them aside)`);
   }
-  if (names.some((n) => path.resolve(src, n) === path.resolve(target, n))) {
+  // Compare real paths: the target (or a skill in it) may be a symlink to this copy, e.g. /var -> /private/var on macOS
+  const real = (p) => (fs.existsSync(p) ? fs.realpathSync(p) : p);
+  if (names.some((n) => real(path.join(src, n)) === real(path.join(target, n)))) {
     throw new UsageError(`${target} is where this script is installed; run --install-skills from another copy`);
   }
   fs.mkdirSync(target, { recursive: true });

@@ -22,7 +22,7 @@
   ],
   "scripts": {
     "build": "node scripts/build.mjs",
-    "test": "node scripts/build.mjs && node --test \"test/*.test.mjs\"",
+    "test": "node scripts/build.mjs && node --test test/*.test.mjs",
     "check:bundle": "node scripts/build.mjs && git diff --exit-code -- plugin/",
     "prepublishOnly": "npm test"
   },

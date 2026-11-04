@@ -279,6 +279,11 @@ test("--install-skills refuses to replace the copy it runs from", async () => {
   const { spawnSync } = await import("node:child_process");
   const r = spawnSync(process.execPath, [own, "--install-skills", dest, "--force"], { encoding: "utf8" });
   assert.equal(r.status, 64, r.stdout + r.stderr);
+  // The same directory reached through a symlink (like ~/.claude/skills -> elsewhere, or /var on macOS)
+  const link = path.join(dir, "skills-link");
+  fs.symlinkSync(dest, link);
+  const viaLink = spawnSync(process.execPath, [own, "--install-skills", link, "--force"], { encoding: "utf8" });
+  assert.equal(viaLink.status, 64, viaLink.stdout + viaLink.stderr);
   assert.ok(fs.existsSync(own));
 });
 
