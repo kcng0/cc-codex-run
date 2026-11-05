@@ -2,15 +2,16 @@
 
 [简体中文](README.zh-CN.md)
 
-Claude Code skills and a CLI for handing work to [OpenAI Codex](https://github.com/openai/codex) from Claude Code.
+**Claude delegates. Codex builds. You only get the calls that are yours.**
 
-Tasks run on the **local Codex app-server daemon**, the same one the Codex app uses. Every thread `codex-run` starts can be watched, resumed or taken over in the Codex app.
+When Codex stops to ask a question, Claude answers it on the spot from your task, docs and code, and Codex picks up right where it paused. Trade-offs, scope and anything irreversible still come to you. Everything else keeps moving.
 
-What it adds over calling `codex exec`:
+`codex-run` is a set of Claude Code skills and a CLI for handing work to [OpenAI Codex](https://github.com/openai/codex). Tasks run on the **local Codex app-server daemon**, the same one the Codex app uses, so every thread can be watched, resumed or taken over in the Codex app.
 
-- **Questions round-trip.** When Codex (or one of its subagents) asks something, the run exits with `status=question`. The turn keeps waiting on the daemon, and `--answer` sends the reply into that same turn.
-- **Runs are auditable.** Each run records the commands Codex reported (with exit codes), the files it patched, the model and sandbox actually used, and the full event log.
-- **Runs are recoverable.** If the client dies, `--attach` re-follows a running turn. `--stop` interrupts it. A model that is at capacity is retried on the same thread.
+- **Questions don't stall the run.** When Codex or one of its subagents asks, Claude sends the answer into the same waiting turn.
+- **Jump in anytime.** Answer or steer from the Codex app; Claude sees it and won't answer twice.
+- **Every claim is checkable.** Each run records the commands Codex reported (with exit codes), the files it patched, the model and sandbox actually used, and the full event log.
+- **Survives crashes.** If the client dies, `--attach` re-follows a running turn and `--stop` interrupts it. A model that is at capacity is retried on the same thread.
 
 ## Requirements
 
@@ -59,6 +60,8 @@ codex-run --ps | --stop <thread> | --roles | --models
 ```
 
 A run prints `key=value` lines (or one JSON object with `--json`): `status`, `job`, `session`, `model`, `sandbox`, `report` and `commands`, then changed files, questions, or the error. It exits 0 for `ok` and `question`, and 1 for any other status. Run `codex-run -h` for every option.
+
+When Codex asks something, the run exits with `status=question` and prints the questions with the `--answer` command to run; the turn keeps waiting on the daemon, and `--answer` sends the reply into that same turn. If the question was already answered in the Codex app or by another client, `--answer` sends nothing, prints `not_sent=` and `prior_reply=`, and follows the turn instead.
 
 ### Roles
 

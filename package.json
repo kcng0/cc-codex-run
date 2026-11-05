@@ -1,7 +1,7 @@
 {
   "name": "cc-codex-run",
   "version": "0.1.2",
-  "description": "Claude Code skills and CLI for delegating work to OpenAI Codex through the local Codex app-server daemon",
+  "description": "Hand work to OpenAI Codex. Claude answers its questions and keeps the run moving.",
   "type": "module",
   "bin": {
     "codex-run": "plugin/skills/codex/scripts/codex-run.mjs"

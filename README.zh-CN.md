@@ -2,15 +2,16 @@
 
 [English](README.md)
 
-在 Claude Code 里把任务交给 [OpenAI Codex](https://github.com/openai/codex) 的 skills 和 CLI。
+**Claude 派活，Codex 干活，只有该你拍板的事才会找你。**
 
-任务运行在**本机的 Codex app-server daemon** 上，和 Codex app 用的是同一个 daemon，所以 `codex-run` 开的每个会话都能在 Codex app 里查看、续接或接手。
+Codex 中途提问时，Claude 依据任务、文档和代码当场作答，Codex 从停下的地方接着干。产品取舍、范围变更、不可逆操作仍然交给你，其余的都不用停。
 
-相比直接调用 `codex exec`：
+`codex-run` 是一组 Claude Code skills 加一个 CLI，用来把任务交给 [OpenAI Codex](https://github.com/openai/codex)。任务运行在**本机的 Codex app-server daemon** 上，和 Codex app 用的是同一个 daemon，所以每个会话都能在 Codex app 里查看、续接或接手。
 
-- **提问可以往返**：Codex（或它的子代理）中途提问时，`codex-run` 以 `status=question` 退出，turn 留在 daemon 上等待；之后用 `--answer` 把答复送回同一个 turn。
-- **运行过程可核验**：每次运行都会记录 Codex 上报的命令及退出码、改动的文件、实际使用的模型和沙箱，以及完整的事件日志。
-- **中断后可恢复**：客户端退出后可用 `--attach` 重新跟随正在运行的 turn，用 `--stop` 中断它。模型满载时在同一会话上自动续跑。
+- **提问不卡流程**：Codex 或它的子代理一提问，Claude 就把答复送回同一个等待中的 turn。
+- **随时插手**：在 Codex app 里直接回答或改方向，Claude 会看到，不会重复作答。
+- **每句汇报都能核对**：每次运行都会记录 Codex 上报的命令及退出码、改动的文件、实际使用的模型和沙箱，以及完整的事件日志。
+- **断了能接上**：客户端退出后可用 `--attach` 重新跟随正在运行的 turn，用 `--stop` 中断它。模型满载时在同一会话上自动续跑。
 
 ## 运行要求
 
@@ -65,6 +66,8 @@ codex-run --ps | --stop <thread> | --roles | --models
 - 退出码：`ok` 和 `question` 为 0，其余状态为 1。
 
 全部参数见 `codex-run -h`。
+
+Codex 提问时，运行以 `status=question` 退出，打印问题和要执行的 `--answer` 命令；turn 留在 daemon 上等待，`--answer` 把答复送回同一个 turn。如果问题已经在 Codex app 或其他客户端里答过，`--answer` 不再发送，输出 `not_sent=` 和 `prior_reply=`，改为跟随该 turn。
 
 ### 角色
 
