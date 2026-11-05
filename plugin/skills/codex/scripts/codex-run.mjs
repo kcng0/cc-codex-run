@@ -11898,6 +11898,7 @@ var RESUME_AFTER_OVERLOAD = "(codex-run) The previous turn stopped because the m
 var COMPLETION_CHECK_MS = 5e3;
 var USER_INPUT_WAIT_MS = 3e3;
 var PARENT_DEPTH_LIMIT = 16;
+var LIMIT_STATUS = /^(timeout|stalled)\(/;
 var shq = (v) => /^[A-Za-z0-9_\/.,:=@%+-]+$/.test(v) ? v : `'${v.replace(/'/g, "'\\''")}'`;
 var cut = (s, n) => Array.from(s).slice(0, n).join("");
 function settings(a, role) {
@@ -11950,7 +11951,9 @@ async function run(a, { role, schema, validate, version }) {
     cwd: a.dir,
     mode: a.review ? "review" : a.resume ? "resume" : a.attach ? "attach" : a.answer ? "answer" : "new",
     started: Math.floor(Date.now() / 1e3),
-    retries: 0
+    retries: 0,
+    timeout: a.timeout,
+    idle: a.idle
   };
   if (a.schema) meta.schema = path4.resolve(a.schema);
   const eventsFd = fs5.openSync(`${job}/events.jsonl`, "w");
@@ -11958,6 +11961,7 @@ async function run(a, { role, schema, validate, version }) {
   let questions = [], questionThread = null;
   let cl = null, turn = null, lastTurnId = null;
   const deadline = Date.now() + a.timeout * 1e3;
+  let lastEvent = { at: Date.now(), method: "(start)" };
   const threads = /* @__PURE__ */ new Set();
   const touched = /* @__PURE__ */ new Set();
   const commands = [];
@@ -11967,15 +11971,24 @@ async function run(a, { role, schema, validate, version }) {
   const follow = (id) => {
     turn = { id };
     lastTurnId = id;
+    lastEvent = { at: Date.now(), method: "(turn followed)" };
   };
   const startTurn = async (method, params, pick) => {
     follow(pick(await cl.call(method, params, { interruptible: false })));
     if (currentStop()) throw currentStop();
   };
-  const interrupt = async () => {
+  const limitHit = () => {
+    if (Date.now() >= deadline) return "timeout";
+    if (Date.now() - lastEvent.at >= a.idle * 1e3) return "stalled";
+    return null;
+  };
+  const limitStatus = (hit) => hit === "timeout" ? `timeout(${a.timeout}s)` : `stalled(${a.idle}s)`;
+  const limitError = (hit) => hit === "timeout" ? `wall-clock limit of ${a.timeout}s (-t) reached` : `no event from the turn for ${a.idle}s (--idle); last: ${lastEvent.method} at ${new Date(lastEvent.at).toISOString()}`;
+  const interrupt = async (hit) => {
     await cl.call("turn/interrupt", { threadId: tid, turnId: turn.id });
     turn = null;
-    status = `timeout(${a.timeout}s)`;
+    status = limitStatus(hit);
+    err = `${limitError(hit)}; the turn was interrupted and the thread kept (--resume ${tid} to continue)`;
   };
   const asQuestion = (qs, body, threadId) => {
     questions = qs;
@@ -12063,9 +12076,10 @@ async function run(a, { role, schema, validate, version }) {
     }
     const expired = !a.attach && Date.now() >= deadline;
     if (expired && turn) {
-      await interrupt();
+      await interrupt("timeout");
     } else if (expired) {
-      status = `timeout(${a.timeout}s)`;
+      status = limitStatus("timeout");
+      err = limitError("timeout");
     } else if (a.review) {
       await newTurn("review/start", { threadId: tid, target: reviewTarget(a, text) });
     } else if (a.attach) {
@@ -12098,12 +12112,16 @@ async function run(a, { role, schema, validate, version }) {
       if (asked) meta.answered = asked.question.questions.map((x) => x.title || "");
       await newTurn("turn/start", { threadId: tid, input: [{ type: "text", text }], ...overrides });
     }
-    while (turn && status !== "question" && !status.startsWith("timeout")) {
+    while (turn && status !== "question" && !LIMIT_STATUS.test(status)) {
+      const hit = limitHit();
+      if (hit) {
+        await interrupt(hit);
+        break;
+      }
       let m;
       try {
-        const waits = [deadline - Date.now()];
-        if (inferAt !== null) waits.push(inferAt - Date.now());
-        m = await cl.nextNotification(Math.min(...waits));
+        const due = [deadline, lastEvent.at + a.idle * 1e3, inferAt ?? Infinity];
+        m = await cl.nextNotification(Math.min(...due) - Date.now());
       } catch (e) {
         if (!(e instanceof TimeoutError)) throw e;
         m = null;
@@ -12125,10 +12143,6 @@ async function run(a, { role, schema, validate, version }) {
             }
             inferAt = Date.now() + COMPLETION_CHECK_MS;
           }
-        }
-        if (Date.now() >= deadline) {
-          await interrupt();
-          break;
         }
         continue;
       }
@@ -12153,6 +12167,7 @@ async function run(a, { role, schema, validate, version }) {
       const evTurn = eventTurnId(m);
       if (root && evTurn !== null && evTurn !== turn.id) continue;
       const meth = m.method;
+      lastEvent = { at: Date.now(), method: meth };
       const item = par.item || {};
       if (root) inferAt = null;
       if (meth === "item/completed" && item.type === "commandExecution") {
@@ -12185,10 +12200,6 @@ async function run(a, { role, schema, validate, version }) {
       }
       if (!root) {
         if (finalSeen && !pendingCollab.size && !activeSubTurns.size && inferAt === null) inferAt = Date.now() + COMPLETION_CHECK_MS;
-        if (Date.now() > deadline) {
-          await interrupt();
-          break;
-        }
         continue;
       }
       if (meth === "item/completed" && item.type === "agentMessage" && !reviewSeen) {
@@ -12221,10 +12232,6 @@ async function run(a, { role, schema, validate, version }) {
         break;
       }
       if (finalSeen && !pendingCollab.size && !activeSubTurns.size && inferAt === null) inferAt = Date.now() + COMPLETION_CHECK_MS;
-      if (Date.now() > deadline) {
-        await interrupt();
-        break;
-      }
     }
     if (status === "ok" && !report && lastTurnId) {
       const t = ((await cl.call("thread/read", { threadId: tid, includeTurns: true })).thread.turns || []).find((x) => x.id === lastTurnId);
@@ -12330,7 +12337,8 @@ options:
   -e, --effort EFFORT   override the role's reasoning effort (new threads only)
   -s, --sandbox MODE    ${SANDBOX_MODES.join(" | ")}; overrides the role's sandbox_mode.
                         Without either, Codex's own config (or the resumed thread) decides
-  -t, --timeout SECONDS interrupt the turn after this long (default 5400)
+  -t, --timeout SECONDS interrupt the turn after this long (default 14400)
+  --idle SECONDS        interrupt the turn after this long without any event from it (default 1800)
   --allow-subagents     let Codex spawn its own subagents (off by default)
   -C, --cd DIR          working directory
   --schema FILE         JSON Schema for the final message (turn outputSchema, validated locally too)
@@ -12368,6 +12376,7 @@ function parseCli(argv) {
         effort: { type: "string", short: "e" },
         sandbox: { type: "string", short: "s" },
         timeout: { type: "string", short: "t" },
+        idle: { type: "string" },
         "allow-subagents": { type: "boolean" },
         cd: { type: "string", short: "C" },
         schema: { type: "string" },
@@ -12407,12 +12416,14 @@ function parseCli(argv) {
     base: o.base,
     commit: o.commit,
     task: parsed.positionals[0],
-    timeout: 5400
+    timeout: 14400,
+    idle: 1800
   };
   if (a.sandbox !== void 0 && !SANDBOX_MODES.includes(a.sandbox)) throw new UsageError(`-s must be one of ${SANDBOX_MODES.join(" / ")}`);
-  if (o.timeout !== void 0) {
-    if (!/^\d+$/.test(o.timeout) || parseInt(o.timeout, 10) <= 0) throw new UsageError(`-t needs a positive number of seconds: ${o.timeout}`);
-    a.timeout = parseInt(o.timeout, 10);
+  for (const [key, flag] of [["timeout", "-t"], ["idle", "--idle"]]) {
+    if (o[key] === void 0) continue;
+    if (!/^\d+$/.test(o[key]) || parseInt(o[key], 10) <= 0) throw new UsageError(`${flag} needs a positive number of seconds: ${o[key]}`);
+    a[key] = parseInt(o[key], 10);
   }
   return { a, o };
 }

@@ -27,6 +27,7 @@ const COMPLETION_CHECK_MS = 5000;
 // After thread/resume the daemon re-sends a pending blocking question; wait this long for it
 const USER_INPUT_WAIT_MS = 3000;
 const PARENT_DEPTH_LIMIT = 16;
+const LIMIT_STATUS = /^(timeout|stalled)\(/;
 
 // POSIX shell quoting for commands printed for the caller to run
 const shq = (v) => (/^[A-Za-z0-9_\/.,:=@%+-]+$/.test(v) ? v : `'${v.replace(/'/g, "'\\''")}'`);
@@ -84,14 +85,16 @@ export async function run(a, { role, schema, validate, version }) {
   const meta = {
     pid: process.pid, role: a.role ?? null, model: s.model, effort: s.effort, sandbox: s.sandbox, cwd: a.dir,
     mode: a.review ? "review" : a.resume ? "resume" : a.attach ? "attach" : a.answer ? "answer" : "new",
-    started: Math.floor(Date.now() / 1000), retries: 0,
+    started: Math.floor(Date.now() / 1000), retries: 0, timeout: a.timeout, idle: a.idle,
   };
   if (a.schema) meta.schema = path.resolve(a.schema);
   const eventsFd = fs.openSync(`${job}/events.jsonl`, "w");
   let tid = "", status = "failed", report = "", err = "";
   let questions = [], questionThread = null;
   let cl = null, turn = null, lastTurnId = null;
+  // -t caps the run's wall-clock time; --idle interrupts sooner a turn that has stopped producing events
   const deadline = Date.now() + a.timeout * 1000;
+  let lastEvent = { at: Date.now(), method: "(start)" };
   // Threads of this run: the root plus subagent threads it spawned (files and commands are collected from all)
   const threads = new Set();
   const touched = new Set();
@@ -100,17 +103,27 @@ export async function run(a, { role, schema, validate, version }) {
   const activeSubTurns = new Set();
   let finalSeen = false, reviewSeen = false, inferAt = null;
 
-  const follow = (id) => { turn = { id }; lastTurnId = id; };
+  const follow = (id) => { turn = { id }; lastTurnId = id; lastEvent = { at: Date.now(), method: "(turn followed)" }; };
   // Requests that create a turn wait for their response even after a stop signal, so the turn id is known and
   // the stop handler can interrupt it instead of leaving it running on the daemon
   const startTurn = async (method, params, pick) => {
     follow(pick(await cl.call(method, params, { interruptible: false })));
     if (currentStop()) throw currentStop();
   };
-  const interrupt = async () => {
+  const limitHit = () => {
+    if (Date.now() >= deadline) return "timeout";
+    if (Date.now() - lastEvent.at >= a.idle * 1000) return "stalled";
+    return null;
+  };
+  const limitStatus = (hit) => (hit === "timeout" ? `timeout(${a.timeout}s)` : `stalled(${a.idle}s)`);
+  const limitError = (hit) => (hit === "timeout"
+    ? `wall-clock limit of ${a.timeout}s (-t) reached`
+    : `no event from the turn for ${a.idle}s (--idle); last: ${lastEvent.method} at ${new Date(lastEvent.at).toISOString()}`);
+  const interrupt = async (hit) => {
     await cl.call("turn/interrupt", { threadId: tid, turnId: turn.id });
     turn = null;
-    status = `timeout(${a.timeout}s)`;
+    status = limitStatus(hit);
+    err = `${limitError(hit)}; the turn was interrupted and the thread kept (--resume ${tid} to continue)`;
   };
   const asQuestion = (qs, body, threadId) => {
     questions = qs; report = body; status = "question"; questionThread = threadId; turn = null;
@@ -202,9 +215,10 @@ export async function run(a, { role, schema, validate, version }) {
     const expired = !a.attach && Date.now() >= deadline;
 
     if (expired && turn) {
-      await interrupt();
+      await interrupt("timeout");
     } else if (expired) {
-      status = `timeout(${a.timeout}s)`;
+      status = limitStatus("timeout");
+      err = limitError("timeout");
     } else if (a.review) {
       await newTurn("review/start", { threadId: tid, target: reviewTarget(a, text) });
     } else if (a.attach) {
@@ -241,12 +255,13 @@ export async function run(a, { role, schema, validate, version }) {
       await newTurn("turn/start", { threadId: tid, input: [{ type: "text", text }], ...overrides });
     }
 
-    while (turn && status !== "question" && !status.startsWith("timeout")) {
+    while (turn && status !== "question" && !LIMIT_STATUS.test(status)) {
+      const hit = limitHit();
+      if (hit) { await interrupt(hit); break; }
       let m;
       try {
-        const waits = [deadline - Date.now()];
-        if (inferAt !== null) waits.push(inferAt - Date.now());
-        m = await cl.nextNotification(Math.min(...waits));
+        const due = [deadline, lastEvent.at + a.idle * 1000, inferAt ?? Infinity];
+        m = await cl.nextNotification(Math.min(...due) - Date.now());
       } catch (e) {
         if (!(e instanceof TimeoutError)) throw e;
         m = null;
@@ -271,7 +286,6 @@ export async function run(a, { role, schema, validate, version }) {
             inferAt = Date.now() + COMPLETION_CHECK_MS;
           }
         }
-        if (Date.now() >= deadline) { await interrupt(); break; }
         continue;
       }
       const par = m.params || {};
@@ -300,6 +314,7 @@ export async function run(a, { role, schema, validate, version }) {
       const evTurn = eventTurnId(m);
       if (root && evTurn !== null && evTurn !== turn.id) continue;
       const meth = m.method;
+      lastEvent = { at: Date.now(), method: meth };
       const item = par.item || {};
       if (root) inferAt = null;
       if (meth === "item/completed" && item.type === "commandExecution") {
@@ -328,7 +343,6 @@ export async function run(a, { role, schema, validate, version }) {
       }
       if (!root) {
         if (finalSeen && !pendingCollab.size && !activeSubTurns.size && inferAt === null) inferAt = Date.now() + COMPLETION_CHECK_MS;
-        if (Date.now() > deadline) { await interrupt(); break; }
         continue;
       }
       if (meth === "item/completed" && item.type === "agentMessage" && !reviewSeen) {
@@ -358,7 +372,6 @@ export async function run(a, { role, schema, validate, version }) {
         break;
       }
       if (finalSeen && !pendingCollab.size && !activeSubTurns.size && inferAt === null) inferAt = Date.now() + COMPLETION_CHECK_MS;
-      if (Date.now() > deadline) { await interrupt(); break; }
     }
     // The final message may predate this client (--attach, --answer after the answer was consumed): read it back
     if (status === "ok" && !report && lastTurnId) {

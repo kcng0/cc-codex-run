@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Long tasks are no longer cut at 90 minutes while they are still working. The new `--idle` (default 1800 s) interrupts a turn that has produced no event of its own or its subagents' for that long, with `status=stalled(Ns)`. The wall-clock limit `-t` now defaults to 14400 s (was 5400 s) as a bound on tasks that stay busy without converging. Both statuses print an error naming the cause and the `--resume` thread, and `meta.json` records both limits.
+
 ## 0.1.4 — 2026-11-05
 
 - The `codex-delegate` skill has Claude weigh verification counterexamples and review findings instead of accepting them outright: clear, well-sourced ones are fixed directly; doubtful ones (inferred expected value, input unreachable from the real entry point, conflicts with the code, or a fix that changes a contract) are checked first and disputed with evidence. A clean verification is judged against its `coverage` / `not_covered`, re-verification stops after two rounds with open counterexamples handed to the user, and dismissed review findings are reported to the user.

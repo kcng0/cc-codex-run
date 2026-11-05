@@ -33,6 +33,54 @@ test("events of another turn on the same thread are ignored (stale turn/complete
   assert.equal(report(r.fields), "new report");
 });
 
+test("a turn without events of its own for --idle is interrupted as stalled", async () => {
+  let ticker;
+  const srv = await fakeServer(dir, (m, p) => {
+    if (m.method === "thread/start") return p.respond(m.id, opened("R"));
+    if (m.method === "turn/start") {
+      p.respond(m.id, { turn: { id: "T2" } });
+      // Another turn's events on the same thread do not count as progress of this one
+      ticker = setInterval(() => p.notify("item/completed", { threadId: "R", turnId: "T1", item: agentMessage("other", "commentary") }), 300);
+    }
+    if (m.method === "turn/interrupt") p.respond(m.id, {});
+  });
+  const r = await runCli(["--idle", "2", "-C", dir, task], { dir, sock: srv.sock });
+  clearInterval(ticker);
+  await srv.close();
+  assert.equal(r.fields.status, "stalled(2s)", r.stdout + r.stderr);
+  assert.deepEqual(srv.calls("turn/interrupt").map((m) => m.params), [{ threadId: "R", turnId: "T2" }]);
+  assert.match(r.stdout, /--resume R to continue/);
+});
+
+test("a turn that keeps producing events, if only from a subagent, outlasts --idle", async () => {
+  let ticker;
+  const srv = await fakeServer(dir, (m, p) => {
+    if (m.method === "thread/start") return p.respond(m.id, opened("R"));
+    if (m.method === "turn/start") {
+      p.respond(m.id, { turn: { id: "T1" } });
+      p.notify("item/completed", { threadId: "R", turnId: "T1", item: { type: "subAgentActivity", id: "a1", kind: "started", agentThreadId: "S" } });
+      // The root stays quiet for longer than --idle while its subagent works
+      let n = 0;
+      ticker = setInterval(() => {
+        if (++n <= 6) {
+          return p.notify("item/completed", { threadId: "S", turnId: "ST", item: { type: "commandExecution", id: `c${n}`, status: "completed", exitCode: 0, command: "true", cwd: "/" } });
+        }
+        clearInterval(ticker);
+        p.notify("item/completed", { threadId: "R", turnId: "T1", item: { type: "subAgentActivity", id: "a2", kind: "completed", agentThreadId: "S" } });
+        p.notify("item/completed", { threadId: "R", turnId: "T1", item: agentMessage("finished") });
+        p.notify("turn/completed", { threadId: "R", turn: { id: "T1", status: "completed" } });
+      }, 700);
+    }
+    if (m.method === "turn/interrupt") p.respond(m.id, {});
+  });
+  const r = await runCli(["--idle", "2", "--allow-subagents", "-C", dir, task], { dir, sock: srv.sock });
+  clearInterval(ticker);
+  await srv.close();
+  assert.equal(r.fields.status, "ok", r.stdout + r.stderr);
+  assert.equal(report(r.fields), "finished");
+  assert.equal(srv.calls("turn/interrupt").length, 0);
+});
+
 test("a stop signal while turn/start is pending still interrupts the new turn", async () => {
   let child;
   const srv = await fakeServer(dir, (m, p) => {

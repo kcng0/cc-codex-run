@@ -69,6 +69,13 @@ codex-run --ps | --stop <thread> | --roles | --models
 
 Codex 提问时，运行以 `status=question` 退出，打印问题和要执行的 `--answer` 命令；turn 留在 daemon 上等待，`--answer` 把答复送回同一个 turn。如果问题已经在 Codex app 或其他客户端里答过，`--answer` 不再发送，输出 `not_sent=` 和 `prior_reply=`，改为跟随该 turn。
 
+一次运行有两道限制：
+
+- `--idle`（默认 1800 秒）：turn 自身（含其子代理）连续这么久没有任何事件就中断，状态为 `status=stalled(Ns)`。
+- `-t`（默认 14400 秒）：整次运行的墙钟上限，状态为 `status=timeout(Ns)`。
+
+只要任务还在推进，`--idle` 就不会打断它；`-t` 兜底那种一直在忙却不收敛的任务。两种情况下会话都留在 daemon 上，可用 `--resume` 接着做。
+
 ### 角色
 
 角色就是一个 Codex agent TOML 文件。`--role NAME` 先读 `$CODEX_HOME/agents/NAME.toml`；找不到时回退到 `plugin/skills/codex/roles/` 里自带的示例角色（`implement`、`check`、`critic`、`explore`）。自带角色不指定模型，由你的 Codex 配置决定。

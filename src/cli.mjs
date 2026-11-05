@@ -35,7 +35,8 @@ options:
   -e, --effort EFFORT   override the role's reasoning effort (new threads only)
   -s, --sandbox MODE    ${SANDBOX_MODES.join(" | ")}; overrides the role's sandbox_mode.
                         Without either, Codex's own config (or the resumed thread) decides
-  -t, --timeout SECONDS interrupt the turn after this long (default 5400)
+  -t, --timeout SECONDS interrupt the turn after this long (default 14400)
+  --idle SECONDS        interrupt the turn after this long without any event from it (default 1800)
   --allow-subagents     let Codex spawn its own subagents (off by default)
   -C, --cd DIR          working directory
   --schema FILE         JSON Schema for the final message (turn outputSchema, validated locally too)
@@ -74,6 +75,7 @@ function parseCli(argv) {
         effort: { type: "string", short: "e" },
         sandbox: { type: "string", short: "s" },
         timeout: { type: "string", short: "t" },
+        idle: { type: "string" },
         "allow-subagents": { type: "boolean" },
         cd: { type: "string", short: "C" },
         schema: { type: "string" },
@@ -100,12 +102,13 @@ function parseCli(argv) {
   const a = {
     role: o.role, model: o.model, effort: o.effort, sandbox: o.sandbox, allowSubagents: Boolean(o["allow-subagents"]),
     dir: o.cd, schema: o.schema, json: Boolean(o.json), resume: o.resume, attach: o.attach, answer: o.answer,
-    review: Boolean(o.review), base: o.base, commit: o.commit, task: parsed.positionals[0], timeout: 5400,
+    review: Boolean(o.review), base: o.base, commit: o.commit, task: parsed.positionals[0], timeout: 14400, idle: 1800,
   };
   if (a.sandbox !== undefined && !SANDBOX_MODES.includes(a.sandbox)) throw new UsageError(`-s must be one of ${SANDBOX_MODES.join(" / ")}`);
-  if (o.timeout !== undefined) {
-    if (!/^\d+$/.test(o.timeout) || parseInt(o.timeout, 10) <= 0) throw new UsageError(`-t needs a positive number of seconds: ${o.timeout}`);
-    a.timeout = parseInt(o.timeout, 10);
+  for (const [key, flag] of [["timeout", "-t"], ["idle", "--idle"]]) {
+    if (o[key] === undefined) continue;
+    if (!/^\d+$/.test(o[key]) || parseInt(o[key], 10) <= 0) throw new UsageError(`${flag} needs a positive number of seconds: ${o[key]}`);
+    a[key] = parseInt(o[key], 10);
   }
   return { a, o };
 }

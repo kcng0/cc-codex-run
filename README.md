@@ -63,6 +63,8 @@ A run prints `key=value` lines (or one JSON object with `--json`): `status`, `jo
 
 When Codex asks something, the run exits with `status=question` and prints the questions with the `--answer` command to run; the turn keeps waiting on the daemon, and `--answer` sends the reply into that same turn. If the question was already answered in the Codex app or by another client, `--answer` sends nothing, prints `not_sent=` and `prior_reply=`, and follows the turn instead.
 
+A run has two limits. `--idle` (default 1800 s) interrupts a turn that has produced no event of its own, its subagents' included, for that long, and reports `status=stalled(Ns)`. `-t` (default 14400 s) caps the whole run's wall-clock time and reports `status=timeout(Ns)`. A long task that keeps working is not cut short by `--idle`; `-t` bounds one that keeps busy without converging. Either way the thread stays on the daemon, and `--resume` continues it.
+
 ### Roles
 
 A role is a Codex agent TOML file. `--role NAME` reads `$CODEX_HOME/agents/NAME.toml` first and falls back to the examples bundled in `plugin/skills/codex/roles/` (`implement`, `check`, `critic`, `explore`). The bundled roles set no model, so your Codex config decides.
