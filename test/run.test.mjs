@@ -116,6 +116,51 @@ test("a subagent's blocking question is answered on the subagent thread and the 
   assert.equal(report(r.fields), "root finished");
 });
 
+const asyncQuestion = { ...agentMessage("need input", "final_answer"), delivery: "async", questions: [{ title: "Keep it?", options: ["keep", "change"] }] };
+const userMessage = (text) => ({ type: "userMessage", id: `u-${Math.random()}`, content: [{ type: "text", text }] });
+
+test("--answer to an async question already answered elsewhere sends nothing and follows the turn", async () => {
+  const srv = await fakeServer(dir, (m, p) => {
+    if (m.method === "thread/read" && !m.params.includeTurns) return p.respond(m.id, { thread: thread("R") });
+    if (m.method === "thread/resume") return p.respond(m.id, opened("R"));
+    if (m.method === "thread/read") {
+      const items = [userMessage("task"), asyncQuestion, userMessage("keep\n"), agentMessage("still working", "commentary")];
+      p.respond(m.id, { thread: thread("R", { turns: [{ id: "T1", status: "inProgress", items }] }) });
+      p.notify("item/completed", { threadId: "R", turnId: "T1", item: agentMessage("kept it") });
+      p.notify("turn/completed", { threadId: "R", turn: { id: "T1", status: "completed" } });
+    }
+  });
+  const answer = path.join(dir, "answer-twice.md");
+  fs.writeFileSync(answer, "change\n");
+  const r = await runCli(["--answer", "R", "-C", dir, answer], { dir, sock: srv.sock });
+  await srv.close();
+  assert.equal(r.fields.status, "ok", r.stdout + r.stderr);
+  assert.deepEqual([...srv.calls("turn/steer"), ...srv.calls("turn/start")], []);
+  assert.match(r.fields.not_sent, /^no question is waiting on R/);
+  assert.equal(r.fields.prior_reply, "keep");
+  assert.equal(report(r.fields), "kept it");
+});
+
+test("--answer after the answered turn finished reports that turn instead of starting a new one", async () => {
+  const srv = await fakeServer(dir, (m, p) => {
+    if (m.method === "thread/read" && !m.params.includeTurns) return p.respond(m.id, { thread: thread("R") });
+    if (m.method === "thread/resume") return p.respond(m.id, opened("R"));
+    if (m.method === "thread/read") {
+      const turns = [{ id: "T1", status: "completed", items: [userMessage("task"), asyncQuestion] },
+        { id: "T2", status: "completed", items: [userMessage("keep"), agentMessage("kept it")] }];
+      p.respond(m.id, { thread: thread("R", { turns }) });
+    }
+  });
+  const answer = path.join(dir, "answer-late.md");
+  fs.writeFileSync(answer, "change\n");
+  const r = await runCli(["--answer", "R", "-C", dir, answer], { dir, sock: srv.sock });
+  await srv.close();
+  assert.equal(r.fields.status, "ok", r.stdout + r.stderr);
+  assert.deepEqual([...srv.calls("turn/steer"), ...srv.calls("turn/start")], []);
+  assert.equal(r.fields.prior_reply, "keep");
+  assert.equal(report(r.fields), "kept it");
+});
+
 test("--schema rejects a final message that is valid JSON but does not match the schema", async () => {
   const schema = path.join(dir, "schema.json");
   fs.writeFileSync(schema, JSON.stringify({ type: "object", required: ["status"], properties: { status: { enum: ["complete"] } } }));

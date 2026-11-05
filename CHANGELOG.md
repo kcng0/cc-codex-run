@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- `--answer` no longer sends a second reply when the question was already answered (in the Codex app, by another client, or by an earlier `--answer`). It sends nothing, prints `not_sent=` and `prior_reply=` (the reply found on the thread), and follows the turn like `--attach`, or reports the turn that already finished.
+- An async question stays recognized as unanswered when Codex keeps posting messages after asking it. Previously `--answer` waited for a blocking question first and `--attach` followed instead of returning `status=question`.
+
 ## 0.1.2 — 2026-11-04
 
 - The `codex` skill calls its script as `node <path>`, so it works when an installer drops the executable bit (cc-switch installs from GitHub did, giving "Permission denied").

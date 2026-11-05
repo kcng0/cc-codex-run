@@ -6,7 +6,7 @@ import { createJob, pruneJobs, recallSandbox, rememberSandbox } from "./jobs.mjs
 import { ConnectionClosed, RpcError, TimeoutError, USER_INPUT, connect, control } from "./rpc.mjs";
 import { Stopped, currentStop, sleep } from "./signals.mjs";
 import {
-  AnswerError, eventTurnId, pendingQuestion, reportFromTurn, reviewTarget, userInputAnswers, userInputQuestions,
+  AnswerError, eventTurnId, lastQuestion, reportFromTurn, reviewTarget, userInputAnswers, userInputQuestions, userMessageText,
 } from "./turns.mjs";
 
 const SANDBOX_POLICY = {
@@ -56,8 +56,8 @@ async function rootOf(cl, id) {
   throw new RpcError(`thread ${id}: parent chain deeper than ${PARENT_DEPTH_LIMIT}`);
 }
 
-const liveTurns = async (cl, threadId) =>
-  ((await cl.call("thread/read", { threadId, includeTurns: true })).thread.turns || []).filter((t) => t.status === "inProgress");
+const allTurns = async (cl, threadId) => (await cl.call("thread/read", { threadId, includeTurns: true })).thread.turns || [];
+const inProgress = (t) => t.status === "inProgress";
 
 async function takeUserInputRequest(cl, threadId, turnId, waitMs) {
   const deadline = Date.now() + waitMs;
@@ -171,10 +171,10 @@ export async function run(a, { role, schema, validate, version }) {
       if (used) { meta.sandbox = used; rememberSandbox(tid, used); }
     };
 
-    let live = [], qLive = [], userInputReq = null;
+    let turns = [], live = [], qLive = [], asked = null, userInputReq = null;
     if (a.answer) {
-      const turns = (await cl.call("thread/read", { threadId: tid, includeTurns: true })).thread.turns || [];
-      live = turns.filter((t) => t.status === "inProgress");
+      turns = await allTurns(cl, tid);
+      live = turns.filter(inProgress);
       if (live.length) {
         follow(live.at(-1).id);
         // Re-attaching: recover the subagent threads this turn already spawned
@@ -190,9 +190,11 @@ export async function run(a, { role, schema, validate, version }) {
           }
         }
       }
-      qLive = target === tid ? live : await liveTurns(cl, target);
-      // A live turn without an async question may be blocked on request_user_input: wait for the re-sent request
-      if (!a.attach && qLive.length && !pendingQuestion(qLive.at(-1))) {
+      const qTurns = target === tid ? turns : await allTurns(cl, target);
+      qLive = qTurns.filter(inProgress);
+      asked = lastQuestion(qTurns);
+      // A live turn without an unanswered async question may be blocked on request_user_input: wait for the re-sent request
+      if (!a.attach && qLive.length && !(asked && !asked.reply)) {
         const wait = Math.min(USER_INPUT_WAIT_MS, Math.max(0, deadline - Date.now()));
         userInputReq = await takeUserInputRequest(cl, target, qLive.at(-1).id, wait);
       }
@@ -208,22 +210,34 @@ export async function run(a, { role, schema, validate, version }) {
     } else if (a.attach) {
       if (!live.length) throw new RpcError(`thread ${tid} has no turn in progress; nothing to attach to`);
       // Questions asked while no client was connected are not re-sent: hand an unanswered one to the caller
-      const q = pendingQuestion(live.at(-1));
-      if (q) asQuestion(q.questions, q.text || "", tid);
+      const q = lastQuestion([live.at(-1)]);
+      if (q && !q.reply) asQuestion(q.question.questions, q.question.text || "", tid);
     } else if (userInputReq) {
       const answers = userInputAnswers(userInputReq, text);
       meta.answered = userInputQuestions(userInputReq).map((x) => x.title || "");
       cl.send({ jsonrpc: "2.0", id: userInputReq.id, result: { answers } });
       if (!live.length) follow(userInputReq.params.turnId);
+    } else if (a.answer && !(asked && !asked.reply)) {
+      // Nothing is waiting: the question was answered elsewhere (the Codex app, another client, an earlier --answer).
+      // Sending this answer too would reach Codex as a second reply, so nothing is sent and the turn is followed
+      // like --attach; a finished turn is reported as it ended
+      meta.notSent = { thread: target, reply: asked?.reply ? userMessageText(asked.reply) : null };
+      if (!live.length) {
+        const last = turns.at(-1);
+        if (!last) throw new RpcError(`thread ${tid} has no turns; nothing was asked`);
+        lastTurnId = last.id;
+        status = last.status === "completed" ? "ok" : String(last.status);
+        err = last.error?.message || "";
+      }
     } else if (qLive.length) {
-      const q = pendingQuestion(qLive.at(-1));
-      if (q) meta.answered = q.questions.map((x) => x.title || "");
+      meta.answered = asked.question.questions.map((x) => x.title || "");
       // The asking turn is still waiting: the answer is steered into that turn instead of starting a new one
       const steered = await cl.call("turn/steer", {
         threadId: target, input: [{ type: "text", text }], expectedTurnId: qLive.at(-1).id,
       });
       if (!live.length) follow(steered.turnId);
     } else {
+      if (asked) meta.answered = asked.question.questions.map((x) => x.title || "");
       await newTurn("turn/start", { threadId: tid, input: [{ type: "text", text }], ...overrides });
     }
 
@@ -401,7 +415,7 @@ export async function run(a, { role, schema, validate, version }) {
     status, job, session: tid, model: meta.model, effort: meta.effort, sandbox: meta.sandbox,
     report: `${job}/report.md`, error: status === "ok" || status === "question" ? null : err,
     commands: a.review ? null : { file: commands.length ? `${job}/commands.jsonl` : null, count: commands.length, failed: failedCommands },
-    touched: [...touched], answered: meta.answered || [], inferred: meta.inferred || null,
+    touched: [...touched], answered: meta.answered || [], notSent: meta.notSent || null, inferred: meta.inferred || null,
     questions: status === "question" ? questions : [],
     questionThread: status === "question" && answerThread !== tid ? answerThread : null,
     answerCommand: status === "question"

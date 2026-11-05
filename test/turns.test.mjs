@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { compareVersions } from "../src/env.mjs";
-import { AnswerError, eventTurnId, reportFromTurn, userInputAnswers } from "../src/turns.mjs";
+import { AnswerError, eventTurnId, lastQuestion, reportFromTurn, userInputAnswers } from "../src/turns.mjs";
 
 const req = (...ids) => ({ params: { questions: ids.map((id) => ({ id, question: id })) } });
 
@@ -33,4 +33,16 @@ test("compareVersions orders numeric components", () => {
   assert.equal(compareVersions("0.164.0", "0.164.0"), 0);
   assert.equal(compareVersions("0.99.9", "0.164.0"), -1);
   assert.equal(compareVersions("1.0.0-alpha.1", "0.164.0"), 1);
+});
+
+test("lastQuestion: a question stays unanswered through later agent messages; any user message answers it", () => {
+  const q = (title) => ({ type: "agentMessage", text: title, questions: [{ title }] });
+  const u = { type: "userMessage", content: [{ type: "text", text: "yes" }] };
+  const m = { type: "agentMessage", text: "working" };
+  assert.equal(lastQuestion([{ items: [u, m] }]), null);
+  assert.equal(lastQuestion([{ items: [u, q("a"), m] }]).reply, null);
+  assert.equal(lastQuestion([{ items: [q("a")] }, { items: [u] }]).reply, u);
+  const later = lastQuestion([{ items: [q("a"), u, q("b")] }]);
+  assert.equal(later.question.text, "b");
+  assert.equal(later.reply, null);
 });

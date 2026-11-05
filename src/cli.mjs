@@ -163,6 +163,10 @@ function formatText(r) {
     out.push(`inferred=turn/completed not received; read back from the daemon: turn ${r.inferred.turnStatus}, thread ${r.inferred.threadStatus}`);
   }
   for (const title of r.answered) out.push(`answered=${Array.from(title).slice(0, 200).join("")}`);
+  if (r.notSent) {
+    out.push(`not_sent=no question is waiting on ${r.notSent.thread}; the answer file was not sent; the turn was followed as with --attach, or read back if it had finished`);
+    if (r.notSent.reply !== null) out.push(`prior_reply=${Array.from(r.notSent.reply.replace(/\s+/g, " ").trim()).slice(0, 200).join("")}`);
+  }
   if (r.touched.length) out.push(`--- changed files (${r.touched.length}) ---`, ...r.touched);
   if (r.status === "question") {
     if (r.questionThread) out.push(`question_thread=${r.questionThread} (asked by a subagent)`);

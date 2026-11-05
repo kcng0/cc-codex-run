@@ -2,10 +2,18 @@
 
 export class AnswerError extends Error {}
 
-// The last user-visible message of a turn, if it is an unanswered question
-export function pendingQuestion(turn) {
-  const last = [...(turn?.items || [])].reverse().find((it) => it.type === "agentMessage" || it.type === "userMessage") || {};
-  return last.type === "agentMessage" && last.questions?.length ? last : null;
+export const userMessageText = (item) => (item.content || []).filter((c) => c.type === "text").map((c) => c.text).join("\n");
+
+// The latest async question across turns and the first user message after it (reply is null while it is unanswered).
+// Codex keeps working after an async question, so later agent messages do not answer it; any user message does,
+// whichever client sent it (the Codex app, another client, an earlier --answer)
+export function lastQuestion(turns) {
+  let question = null, reply = null;
+  for (const it of turns.flatMap((t) => t?.items || [])) {
+    if (it.type === "agentMessage" && it.questions?.length) { question = it; reply = null; }
+    else if (it.type === "userMessage" && question && !reply) reply = it;
+  }
+  return question ? { question, reply } : null;
 }
 
 // Final report of a completed turn read back with thread/read: review output, else the final answer,

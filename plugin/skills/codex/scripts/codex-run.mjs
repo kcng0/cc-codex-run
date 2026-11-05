@@ -11823,9 +11823,16 @@ function pruneJobs({ keep = [], now = Date.now() } = {}) {
 // src/turns.mjs
 var AnswerError = class extends Error {
 };
-function pendingQuestion(turn) {
-  const last = [...turn?.items || []].reverse().find((it) => it.type === "agentMessage" || it.type === "userMessage") || {};
-  return last.type === "agentMessage" && last.questions?.length ? last : null;
+var userMessageText = (item) => (item.content || []).filter((c) => c.type === "text").map((c) => c.text).join("\n");
+function lastQuestion(turns) {
+  let question = null, reply = null;
+  for (const it of turns.flatMap((t) => t?.items || [])) {
+    if (it.type === "agentMessage" && it.questions?.length) {
+      question = it;
+      reply = null;
+    } else if (it.type === "userMessage" && question && !reply) reply = it;
+  }
+  return question ? { question, reply } : null;
 }
 function reportFromTurn(turn) {
   const items = turn?.items || [];
@@ -11911,7 +11918,8 @@ async function rootOf(cl, id) {
   }
   throw new RpcError(`thread ${id}: parent chain deeper than ${PARENT_DEPTH_LIMIT}`);
 }
-var liveTurns = async (cl, threadId) => ((await cl.call("thread/read", { threadId, includeTurns: true })).thread.turns || []).filter((t) => t.status === "inProgress");
+var allTurns = async (cl, threadId) => (await cl.call("thread/read", { threadId, includeTurns: true })).thread.turns || [];
+var inProgress = (t) => t.status === "inProgress";
 async function takeUserInputRequest(cl, threadId, turnId, waitMs) {
   const deadline = Date.now() + waitMs;
   for (; ; ) {
@@ -12027,10 +12035,10 @@ async function run(a, { role, schema, validate, version }) {
         rememberSandbox(tid, used);
       }
     };
-    let live = [], qLive = [], userInputReq = null;
+    let turns = [], live = [], qLive = [], asked = null, userInputReq = null;
     if (a.answer) {
-      const turns = (await cl.call("thread/read", { threadId: tid, includeTurns: true })).thread.turns || [];
-      live = turns.filter((t) => t.status === "inProgress");
+      turns = await allTurns(cl, tid);
+      live = turns.filter(inProgress);
       if (live.length) {
         follow(live.at(-1).id);
         for (const it of live.at(-1).items || []) {
@@ -12045,8 +12053,10 @@ async function run(a, { role, schema, validate, version }) {
           }
         }
       }
-      qLive = target === tid ? live : await liveTurns(cl, target);
-      if (!a.attach && qLive.length && !pendingQuestion(qLive.at(-1))) {
+      const qTurns = target === tid ? turns : await allTurns(cl, target);
+      qLive = qTurns.filter(inProgress);
+      asked = lastQuestion(qTurns);
+      if (!a.attach && qLive.length && !(asked && !asked.reply)) {
         const wait = Math.min(USER_INPUT_WAIT_MS, Math.max(0, deadline - Date.now()));
         userInputReq = await takeUserInputRequest(cl, target, qLive.at(-1).id, wait);
       }
@@ -12060,16 +12070,24 @@ async function run(a, { role, schema, validate, version }) {
       await newTurn("review/start", { threadId: tid, target: reviewTarget(a, text) });
     } else if (a.attach) {
       if (!live.length) throw new RpcError(`thread ${tid} has no turn in progress; nothing to attach to`);
-      const q = pendingQuestion(live.at(-1));
-      if (q) asQuestion(q.questions, q.text || "", tid);
+      const q = lastQuestion([live.at(-1)]);
+      if (q && !q.reply) asQuestion(q.question.questions, q.question.text || "", tid);
     } else if (userInputReq) {
       const answers = userInputAnswers(userInputReq, text);
       meta.answered = userInputQuestions(userInputReq).map((x) => x.title || "");
       cl.send({ jsonrpc: "2.0", id: userInputReq.id, result: { answers } });
       if (!live.length) follow(userInputReq.params.turnId);
+    } else if (a.answer && !(asked && !asked.reply)) {
+      meta.notSent = { thread: target, reply: asked?.reply ? userMessageText(asked.reply) : null };
+      if (!live.length) {
+        const last = turns.at(-1);
+        if (!last) throw new RpcError(`thread ${tid} has no turns; nothing was asked`);
+        lastTurnId = last.id;
+        status = last.status === "completed" ? "ok" : String(last.status);
+        err = last.error?.message || "";
+      }
     } else if (qLive.length) {
-      const q = pendingQuestion(qLive.at(-1));
-      if (q) meta.answered = q.questions.map((x) => x.title || "");
+      meta.answered = asked.question.questions.map((x) => x.title || "");
       const steered = await cl.call("turn/steer", {
         threadId: target,
         input: [{ type: "text", text }],
@@ -12077,6 +12095,7 @@ async function run(a, { role, schema, validate, version }) {
       });
       if (!live.length) follow(steered.turnId);
     } else {
+      if (asked) meta.answered = asked.question.questions.map((x) => x.title || "");
       await newTurn("turn/start", { threadId: tid, input: [{ type: "text", text }], ...overrides });
     }
     while (turn && status !== "question" && !status.startsWith("timeout")) {
@@ -12273,6 +12292,7 @@ async function run(a, { role, schema, validate, version }) {
     commands: a.review ? null : { file: commands.length ? `${job}/commands.jsonl` : null, count: commands.length, failed: failedCommands },
     touched: [...touched],
     answered: meta.answered || [],
+    notSent: meta.notSent || null,
     inferred: meta.inferred || null,
     questions: status === "question" ? questions : [],
     questionThread: status === "question" && answerThread !== tid ? answerThread : null,
@@ -12451,6 +12471,10 @@ function formatText(r) {
     out.push(`inferred=turn/completed not received; read back from the daemon: turn ${r.inferred.turnStatus}, thread ${r.inferred.threadStatus}`);
   }
   for (const title of r.answered) out.push(`answered=${Array.from(title).slice(0, 200).join("")}`);
+  if (r.notSent) {
+    out.push(`not_sent=no question is waiting on ${r.notSent.thread}; the answer file was not sent; the turn was followed as with --attach, or read back if it had finished`);
+    if (r.notSent.reply !== null) out.push(`prior_reply=${Array.from(r.notSent.reply.replace(/\s+/g, " ").trim()).slice(0, 200).join("")}`);
+  }
   if (r.touched.length) out.push(`--- changed files (${r.touched.length}) ---`, ...r.touched);
   if (r.status === "question") {
     if (r.questionThread) out.push(`question_thread=${r.questionThread} (asked by a subagent)`);
