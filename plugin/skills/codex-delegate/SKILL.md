@@ -40,10 +40,12 @@ Use it when the user asks, or when the change is high-risk: schema or data migra
 
    Fill in anything missing before dispatching.
 2. Use the `check` role with `--schema <codex skill dir>/schemas/check.json` (the schema the `codex` skill ships), so the result comes back as structured counterexamples. If Codex wrote the change, verify with a different model than the author's (`-m`).
-3. After fixing counterexamples, resume the same thread by id so it re-verifies them.
+3. Weigh each counterexample before acting on it. A concrete input, an `expected_source` outside the code under test and an obvious fix are enough: just fix it. Check it yourself first when something looks off: the expected value is inferred rather than sourced, the input is not reachable from the real entry point, it contradicts what you know about the code, or the fix would change a contract or design. If it does not hold, resume the thread with your evidence (the `codex` skill's "Treating results").
+4. A clean result is only as strong as its `coverage`. If `not_covered` includes the risky part of the change, extend the verification or tell the user.
+5. After fixing, resume the same thread by id to re-verify. If counterexamples are still open after two rounds, hand them to the user.
 
 ## Pre-commit review
 
 1. Run it when the user asks, or before committing or merging a batch of non-trivial changes. Use the `codex` skill's Review section: the default for uncommitted changes, `--base <branch>` for a branch. Put known risk areas in the focus file.
 2. Review is read-only and runs no code. To find counterexamples by actually exercising the change, use independent verification instead.
-3. Go through each finding: fix the valid ones, and explain why the others do not hold.
+3. Go through each finding: fix the ones that clearly hold, check doubtful ones against the code before deciding, and tell the user which you dismissed and why.

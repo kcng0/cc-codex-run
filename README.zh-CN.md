@@ -46,7 +46,7 @@ npx skills@latest add kcng0/cc-codex-run -a claude-code -s '*'
 ## Skills
 
 - **`codex`**：教 Claude 用 `codex-run` 派发任务、答复提问、续接、重新跟随、停止和 review。
-- **`codex-delegate`**：委派策略。默认交给 Codex 的是三类工作：接口合同已定的模块实现、独立验收、提交前审查；UI 工作留给 Claude。范围可以在你自己的 CLAUDE.md 里放宽或收窄。
+- **`codex-delegate`**：委派策略。默认交给 Codex 的是三类工作：接口合同已定的模块实现、独立验收、提交前审查；UI 工作留给 Claude。Claude 会权衡 Codex 给出的反例和 review 意见，不照单全收，可疑的先核实再处理。范围可以在你自己的 CLAUDE.md 里放宽或收窄。
 
 ## CLI
 

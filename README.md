@@ -46,7 +46,7 @@ The plugin namespaces its skills (`codex-run:codex`). The other two methods inst
 ## Skills
 
 - **`codex`** teaches Claude how to dispatch, answer, resume, attach to, stop and review with `codex-run`.
-- **`codex-delegate`** is a delegation policy. By default Codex implements modules whose interface contract is fixed and does independent verification and pre-commit review; UI work stays with Claude. Your own CLAUDE.md can widen or narrow this.
+- **`codex-delegate`** is a delegation policy. By default Codex implements modules whose interface contract is fixed and does independent verification and pre-commit review; UI work stays with Claude. Claude weighs Codex's counterexamples and review findings instead of accepting them outright, and checks the doubtful ones before acting. Your own CLAUDE.md can widen or narrow this.
 
 ## CLI
 
