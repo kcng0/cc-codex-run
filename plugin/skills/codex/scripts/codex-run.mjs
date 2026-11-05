@@ -12317,7 +12317,7 @@ async function run(a, { role, schema, validate, version }) {
 }
 
 // src/cli.mjs
-var VERSION = true ? "0.1.4" : "dev";
+var VERSION = true ? "0.1.5" : "dev";
 var HELP = `usage: codex-run [--role ROLE] [-m MODEL] [-e EFFORT] [-s SANDBOX] [-t SECONDS] [--allow-subagents]
                  -C DIR [--schema FILE] [--json] TASK_FILE
        codex-run --resume THREAD -C DIR [--role ROLE] [-s SANDBOX] [--schema FILE] FOLLOW_UP_FILE

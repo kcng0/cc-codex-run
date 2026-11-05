@@ -1,6 +1,6 @@
 {
   "name": "cc-codex-run",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "description": "Hand work to OpenAI Codex. Claude answers its questions and keeps the run moving.",
   "type": "module",
   "bin": {

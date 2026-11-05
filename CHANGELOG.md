@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.1.5 — 2026-11-05
 
 - Long tasks are no longer cut at 90 minutes while they are still working. The new `--idle` (default 1800 s) interrupts a turn that has produced no event of its own or its subagents' for that long, with `status=stalled(Ns)`. The wall-clock limit `-t` now defaults to 14400 s (was 5400 s) as a bound on tasks that stay busy without converging. Both statuses print an error naming the cause and the `--resume` thread, and `meta.json` records both limits.
 
