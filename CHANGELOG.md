@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.4 — 2026-11-05
+
+- The `codex-delegate` skill has Claude weigh verification counterexamples and review findings instead of accepting them outright: clear, well-sourced ones are fixed directly; doubtful ones (inferred expected value, input unreachable from the real entry point, conflicts with the code, or a fix that changes a contract) are checked first and disputed with evidence. A clean verification is judged against its `coverage` / `not_covered`, re-verification stops after two rounds with open counterexamples handed to the user, and dismissed review findings are reported to the user.
+
 ## 0.1.3 — 2026-11-05
 
 - `--answer` no longer sends a second reply when the question was already answered (in the Codex app, by another client, or by an earlier `--answer`). It sends nothing, prints `not_sent=` and `prior_reply=` (the reply found on the thread), and follows the turn like `--attach`, or reports the turn that already finished.
