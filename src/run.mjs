@@ -4,7 +4,7 @@ import path from "node:path";
 import { ensureDaemon, workspaceWriteConfig } from "./env.mjs";
 import { createJob, pruneJobs, recallSandbox, rememberSandbox } from "./jobs.mjs";
 import { ConnectionClosed, RpcError, TimeoutError, USER_INPUT, connect, control } from "./rpc.mjs";
-import { Stopped, currentStop, sleep } from "./signals.mjs";
+import { Stopped, currentStop } from "./signals.mjs";
 import {
   AnswerError, eventTurnId, lastQuestion, reportFromTurn, reviewTarget, userInputAnswers, userInputQuestions, userMessageText,
 } from "./turns.mjs";
@@ -16,10 +16,9 @@ const SANDBOX_POLICY = {
 };
 const SANDBOX_RANK = { "read-only": 0, "workspace-write": 1, "danger-full-access": 2 };
 const SANDBOX_MODE = Object.fromEntries(Object.entries(SANDBOX_POLICY).map(([mode, p]) => [p.type, mode]));
-// Codex retries overloads inside the turn; once those are exhausted the turn fails and is continued on the same thread
+// Codex retries overloads inside the turn; once those are exhausted the run ends with status=capacity and the caller
+// retries on a new thread (a thread stuck at capacity tends to stay there)
 const OVERLOADED = new Set(["serverOverloaded", "server_overloaded"]);
-const RETRY_BACKOFF = [60, 120, 240, 300];
-const RESUME_AFTER_OVERLOAD = "(codex-run) The previous turn stopped because the model was at capacity. Continue the original task from where it stopped and finish with the report it asked for.";
 // Older daemons sometimes never sent turn/completed for a parent turn with subagents. Once a final answer exists,
 // all subagents ended and the root has been quiet this long, the turn's status is read back from the daemon:
 // a finished turn (or an idle thread) ends the run, a still-active one is checked again after the same interval
@@ -85,7 +84,7 @@ export async function run(a, { role, schema, validate, version }) {
   const meta = {
     pid: process.pid, role: a.role ?? null, model: s.model, effort: s.effort, sandbox: s.sandbox, cwd: a.dir,
     mode: a.review ? "review" : a.resume ? "resume" : a.attach ? "attach" : a.answer ? "answer" : "new",
-    started: Math.floor(Date.now() / 1000), retries: 0, timeout: a.timeout, idle: a.idle,
+    started: Math.floor(Date.now() / 1000), timeout: a.timeout, idle: a.idle,
   };
   if (a.schema) meta.schema = path.resolve(a.schema);
   const eventsFd = fs.openSync(`${job}/events.jsonl`, "w");
@@ -358,15 +357,11 @@ export async function run(a, { role, schema, validate, version }) {
         status = t.status === "completed" ? "ok" : String(t.status);
         const error = t.error || {};
         err = error.message || "";
-        const wait = RETRY_BACKOFF[Math.min(meta.retries, RETRY_BACKOFF.length - 1)];
-        if (status === "failed" && OVERLOADED.has(error.codexErrorInfo) && !a.review && Date.now() + wait * 1000 < deadline) {
-          meta.retries += 1;
-          process.stderr.write(`codex-run: model at capacity; continuing on the same thread and model in ${wait}s (retry ${meta.retries})\n`);
-          turn = null;
-          await sleep(wait * 1000);
-          report = ""; err = ""; finalSeen = false;
-          await startTurn("turn/start", { threadId: tid, input: [{ type: "text", text: RESUME_AFTER_OVERLOAD }], ...overrides }, (r) => r.turn.id);
-          continue;
+        if (status === "failed" && OVERLOADED.has(error.codexErrorInfo)) {
+          status = "capacity";
+          err = `model ${meta.model || "(config default)"} at capacity after Codex's own retries: ${(err || "server overloaded").replace(/\.+$/, "")}. `
+            + `Thread ${tid} is kept and may hold partial edits (check git status); `
+            + `retry the original task on a new thread with the same model${meta.model ? ` (-m ${meta.model})` : ""}`;
         }
         turn = null;
         break;

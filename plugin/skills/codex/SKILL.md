@@ -42,7 +42,7 @@ Script: `node ${CLAUDE_SKILL_DIR}/scripts/codex-run.mjs` (always call it with `n
 5. **Any other non-`ok` status**: diagnose from the printed error and `<job>/stderr.log` before re-dispatching; do not retry blindly. `disconnected` means the daemon connection dropped (for example a daemon update). The thread is kept, so continue it with `--resume`.
    - `stalled(Ns)`: the error names the last event and when it arrived. Check `--ps` and the tail of `<job>/events.jsonl` to tell a stuck daemon or model from a task waiting on a silent command, then `--resume` with what to do next.
    - `timeout(Ns)`: the run kept going until the wall-clock limit. Read the commands and the last messages in `<job>/events.jsonl` to see whether it was converging. If it was, `--resume` it. If it was looping, tighten the task (narrower scope, a clear stopping point) before resuming or starting over.
-6. **Model at capacity**: the script handles `Selected model is at capacity` itself. After Codex's own retries inside the turn run out, the script backs off (60→300 s) and continues on the same thread and model until the timeout, noting each retry on stderr. Do not switch models or threads for this. If it is still at capacity at the timeout, `--resume` later with the same input.
+6. **`status=capacity`**: the model stayed at capacity after Codex's own retries inside the turn, and the run stopped. The thread is kept and may hold partial edits: check `git status`, decide whether to keep or restore them, then start a new thread on the same model (`-m <model>`, as the error prints) with the original task, noting any partial edits you kept. If the new thread hits capacity too, wait a few minutes before the next attempt, or ask the user.
 7. **Job directories** are under `$CODEX_RUN_HOME/jobs` (default `~/.local/state/codex-run/jobs`). Finished jobs older than 7 days are pruned automatically. You may delete a job directory once you are done with it; leave other jobs alone, since they may belong to other sessions.
 
 ## Watching and stopping
@@ -58,7 +58,7 @@ Script: `node ${CLAUDE_SKILL_DIR}/scripts/codex-run.mjs` (always call it with `n
 
 ## Resuming
 
-A thread holds one task, not a standing worker for a module or role: by default every task gets a new thread. Resume only when the next turn depends on **the same task's** context in that thread: filling in what a partial / blocked report lacked, re-checking counterexamples it reported, discussing a disagreement about its result, or continuing after `disconnected` or a capacity timeout.
+A thread holds one task, not a standing worker for a module or role: by default every task gets a new thread. Resume only when the next turn depends on **the same task's** context in that thread: filling in what a partial / blocked report lacked, re-checking counterexamples it reported, discussing a disagreement about its result, or continuing after `disconnected`.
 
 Start a new thread, and hand over the needed conclusions in the task file, when:
 - it is a new task or goal (even with the same directory and role)

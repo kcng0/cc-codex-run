@@ -460,3 +460,23 @@ test("a missing turn/completed is not reported as success while the daemon still
   assert.equal(reads, 2);
   assert.match(r.fields.inferred, /turn completed, thread idle/);
 });
+
+test("a turn that fails at capacity ends the run with status=capacity instead of retrying on the same thread", async () => {
+  let turnStarts = 0;
+  const srv = await fakeServer(dir, (m, p) => {
+    if (m.method === "thread/start") return p.respond(m.id, opened("R"));
+    if (m.method === "turn/start") {
+      turnStarts += 1;
+      p.respond(m.id, { turn: { id: `T${turnStarts}` } });
+      p.notify("turn/completed", { threadId: "R", turn: { id: `T${turnStarts}`, status: "failed",
+        error: { message: "Selected model is at capacity", codexErrorInfo: "serverOverloaded" } } });
+    }
+  });
+  const r = await runCli(["-m", "m-1", "-t", "30", "-C", dir, task], { dir, sock: srv.sock });
+  await srv.close();
+  assert.equal(r.code, 1);
+  assert.equal(r.fields.status, "capacity", r.stdout + r.stderr);
+  assert.equal(turnStarts, 1);
+  assert.match(r.stdout, /new thread with the same model \(-m m-1\)/);
+  assert.match(r.stdout, /Thread R is kept/);
+});

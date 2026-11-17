@@ -11,7 +11,7 @@ When Codex stops to ask a question, Claude answers it on the spot from your task
 - **Questions don't stall the run.** When Codex or one of its subagents asks, Claude sends the answer into the same waiting turn.
 - **Jump in anytime.** Answer or steer from the Codex app; Claude sees it and won't answer twice.
 - **Every claim is checkable.** Each run records the commands Codex reported (with exit codes), the files it patched, the model and sandbox actually used, and the full event log.
-- **Survives crashes.** If the client dies, `--attach` re-follows a running turn and `--stop` interrupts it. A model that is at capacity is retried on the same thread.
+- **Survives crashes.** If the client dies, `--attach` re-follows a running turn and `--stop` interrupts it. A model that stays at capacity ends the run with `status=capacity`, so Claude retries on a new thread.
 
 ## Requirements
 

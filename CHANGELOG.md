@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- A model that stays at capacity after Codex's own retries now ends the run with `status=capacity` instead of being retried on the same thread for up to the wall-clock limit (the old backoff could hold a run for hours, visible only by polling). The error names the model and the kept thread, and the `codex` skill has Claude check for partial edits and retry the original task on a new thread with the same model.
 - The `codex-delegate` skill now loads before any implementation, verification or review is handed to Codex, including when the user already asked for it, not only when deciding whether to delegate. Previously "have Codex implement X" loaded only the `codex` skill, and implementation tasks often lacked the real entry point. The `codex` skill also points to `codex-delegate` for these tasks, and its description covers Codex's built-in tools such as image generation.
 - The `codex` skill's guidance follows how it was actually misused: runs are bare background Bash calls (no `&`, `nohup` or redirection) so the completion notification arrives, and Claude waits for it instead of polling; a thread holds one task rather than serving as a standing worker; a task that writes files starts from a restorable state; and `--attach` on a turn that already ended points to `report.md` or `--resume`. Verification tasks state what the verifier may use to trigger the real entry point.
 - The bundled roles carry a `name` field, so they also work as Codex agent roles when copied to `$CODEX_HOME/agents/`.
