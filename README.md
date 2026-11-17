@@ -46,7 +46,7 @@ The plugin namespaces its skills (`codex-run:codex`). The other two methods inst
 ## Skills
 
 - **`codex`** teaches Claude how to dispatch, answer, resume, attach to, stop and review with `codex-run`.
-- **`codex-delegate`** is a delegation policy. By default Codex implements modules whose interface contract is fixed and does independent verification and pre-commit review; UI work stays with Claude. Claude weighs Codex's counterexamples and review findings instead of accepting them outright, and checks the doubtful ones before acting. Your own CLAUDE.md can widen or narrow this.
+- **`codex-delegate`** is a delegation policy. By default Codex implements modules whose interface contract is fixed and does independent verification and pre-commit review; UI work stays with Claude. Verification goes to the other provider: Codex verifies Claude's changes, and a fresh Claude subagent verifies Codex's. Claude weighs Codex's counterexamples and review findings instead of accepting them outright, and checks the doubtful ones before acting. Your own CLAUDE.md can widen or narrow this.
 
 ## CLI
 
@@ -73,6 +73,7 @@ To customize a role, create a file of the same name in `$CODEX_HOME/agents/`; it
 
 ```toml
 # ~/.codex/agents/implement.toml
+name = "implement"                # Codex requires it when the file is also a Codex agent role; codex-run goes by the file name
 description = "Implements one module within an explicit file ownership"
 model = "gpt-6.1-sol"             # optional, from `codex-run --models`; omit to use your Codex config
 model_reasoning_effort = "high"   # optional

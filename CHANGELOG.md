@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+- The `codex-delegate` skill now loads before any implementation, verification or review is handed to Codex, including when the user already asked for it, not only when deciding whether to delegate. Previously "have Codex implement X" loaded only the `codex` skill, and implementation tasks often lacked the real entry point. The `codex` skill also points to `codex-delegate` for these tasks, and its description covers Codex's built-in tools such as image generation.
+- The `codex` skill's guidance follows how it was actually misused: runs are bare background Bash calls (no `&`, `nohup` or redirection) so the completion notification arrives, and Claude waits for it instead of polling; a thread holds one task rather than serving as a standing worker; a task that writes files starts from a restorable state; and `--attach` on a turn that already ended points to `report.md` or `--resume`. Verification tasks state what the verifier may use to trigger the real entry point.
+- The bundled roles carry a `name` field, so they also work as Codex agent roles when copied to `$CODEX_HOME/agents/`.
+- The `codex-delegate` skill picks the independent verifier by who wrote the change, so verifier and author come from different providers: Codex's `check` role (default model) verifies Claude's changes, and a fresh Claude subagent given the `check` role's instructions and schema verifies Codex's. It no longer switches to another Codex model with `-m`, since a same-provider model adds little independence. The task file now describes the change by its contract and expected behavior and leaves out the author's report and verdicts. When falling back to Codex for a Codex-written change, Claude decides between a new thread and resuming the author's thread by how much independent judgement the change needs.
+
 ## 0.1.5 — 2026-11-05
 
 - Long tasks are no longer cut at 90 minutes while they are still working. The new `--idle` (default 1800 s) interrupts a turn that has produced no event of its own or its subagents' for that long, with `status=stalled(Ns)`. The wall-clock limit `-t` now defaults to 14400 s (was 5400 s) as a bound on tasks that stay busy without converging. Both statuses print an error naming the cause and the `--resume` thread, and `meta.json` records both limits.

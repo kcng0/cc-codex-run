@@ -1,3 +1,4 @@
+name = "implement"
 description = "Implements one self-contained module within an explicit file ownership; reports the real entry point to exercise it"
 model_reasoning_effort = "high"
 sandbox_mode = "workspace-write"

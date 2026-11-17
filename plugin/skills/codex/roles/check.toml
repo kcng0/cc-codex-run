@@ -1,3 +1,4 @@
+name = "check"
 description = "Independent verification of someone else's change: reads the implementation for counterexamples, exercises the real entry point; does not edit product code"
 model_reasoning_effort = "high"
 sandbox_mode = "workspace-write"

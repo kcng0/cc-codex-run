@@ -1,6 +1,6 @@
 ---
 name: codex
-description: Run tasks on OpenAI Codex through the local Codex app-server daemon — pick a role or model, run several in the background, answer Codex's questions, resume a thread by id, or run Codex's built-in review. Use whenever you need to call Codex.
+description: Run tasks on OpenAI Codex through the local Codex app-server daemon — pick a role or model, run several in the background, answer Codex's questions, resume a thread by id, or run Codex's built-in review. Use whenever you need to call Codex, including when the user wants Codex's own built-in tools such as its image generation.
 allowed-tools: Bash(node ${CLAUDE_SKILL_DIR}/scripts/codex-run.mjs *)
 ---
 
@@ -11,7 +11,9 @@ Script: `node ${CLAUDE_SKILL_DIR}/scripts/codex-run.mjs` (always call it with `n
 ## Dispatching
 
 1. Write the task to a file. Codex cannot see this conversation, so the task must stand alone: goal, working directory, file ownership, known facts, constraints, a checkable definition of done, and what to do when information is missing (assume and report it, or stop and report blocked). Put one task in each run, and dispatch unrelated work separately.
-2. Run it with Bash `run_in_background: true`:
+   - For implementation, independent verification or pre-commit review, load the `codex-delegate` skill before writing the task: it sets what each of those tasks must also contain.
+   - Before a task that writes files, make sure the current state can be restored (commit, stash or a separate worktree): an interrupted run leaves its partial edits behind.
+2. Run it as a background Bash call (`run_in_background: true`) with the bare command below, without `&`, `nohup` or output redirection, so the harness notifies you when it ends:
 
    ```bash
    node ${CLAUDE_SKILL_DIR}/scripts/codex-run.mjs --role <role> -C <workdir> <task file>
@@ -24,7 +26,7 @@ Script: `node ${CLAUDE_SKILL_DIR}/scripts/codex-run.mjs` (always call it with `n
    - **Subagents**: Codex's own subagents are off by default because orchestration is yours. Add `--allow-subagents` only when the task really needs Codex to split it. If `turn/completed` is overdue (a final answer exists, all subagents ended, 5 s of quiet), the script reads the turn's status back from the daemon. A finished turn or an idle thread ends the run with an `inferred=` line; a turn still active keeps being followed.
    - **Structured results**: `--schema <JSON Schema file>` sets the turn's `outputSchema` and validates the final message locally. A message that is not JSON or does not match gives `status=failed`, and the schema's fields replace the first-line convention. For independent verification, use `${CLAUDE_SKILL_DIR}/schemas/check.json`. The schema is bound to the turn: after a question, answering with `--answer` keeps the same turn and the same schema, so do not re-run with `--resume` just to get structured output.
    - `--json` prints one JSON object instead of `key=value` lines.
-3. **Do not poll.** When the completion notification arrives, read `status`, `session`, `model`, `sandbox` and `report`, then read the whole report (first line complete / partial / blocked, or the schema's `status` field).
+3. **Wait for the completion notification.** Until it arrives, work on something else or end your turn; it is the only signal you need, so checking `--ps`, `sleep` loops or reading the output early only spend turns. When it arrives, read `status`, `session`, `model`, `sandbox` and `report`, then read the whole report (first line complete / partial / blocked, or the schema's `status` field).
    - `model` and `sandbox` are what the run actually used. If they differ from what you expected, find out why before trusting the result.
    - `commands=` points to the commands Codex reported (exit code, cwd, including subagents). Commands Codex runs through its code-mode `exec` tool are not reported there.
    - `--- changed files ---` lists files written through apply_patch only. Treat `git status` / diff as the real scope of changes.
@@ -47,7 +49,7 @@ Script: `node ${CLAUDE_SKILL_DIR}/scripts/codex-run.mjs` (always call it with `n
 
 - `--ps` lists threads with a turn in progress on the daemon (model, directory, parent for subagents). Use it as the truth for how many tasks are running.
 - **Stop**: TaskStop on the background Bash is enough. On SIGTERM the script interrupts the turn on the daemon, including a turn whose start request was still in flight, and prints `status=interrupted`. If the client is already gone (killed, or left over from another session), use `--stop <thread>`. Ending only the client does not stop the turn.
-- **Re-attach**: if the client exited while the turn is still running, run `--attach <thread> -C <same dir>` in the background. It sends no input and does not interrupt, and if the final answer was produced before you attached, it is read back. To replace a running client, `kill -KILL <old client pid>` first (SIGKILL skips the interrupt handler, so the turn is unaffected); do not use TaskStop for this.
+- **Re-attach**: if the client exited while the turn is still running, run `--attach <thread> -C <same dir>` in the background. It sends no input and does not interrupt, and if the final answer was produced before you attached, it is read back. If it reports no turn in progress, the turn already ended: read `<job>/report.md` if the job got that far, else `--resume` the thread asking for its final report. To replace a running client, `kill -KILL <old client pid>` first (SIGKILL skips the interrupt handler, so the turn is unaffected); do not use TaskStop for this.
 
 ## Parallel runs
 
@@ -56,7 +58,7 @@ Script: `node ${CLAUDE_SKILL_DIR}/scripts/codex-run.mjs` (always call it with `n
 
 ## Resuming
 
-By default every task gets a new thread. Resume only when the next turn depends on **the same task's** context in that thread: filling in what a partial / blocked report lacked, re-checking counterexamples it reported, discussing a disagreement about its result, or continuing after `disconnected` or a capacity timeout.
+A thread holds one task, not a standing worker for a module or role: by default every task gets a new thread. Resume only when the next turn depends on **the same task's** context in that thread: filling in what a partial / blocked report lacked, re-checking counterexamples it reported, discussing a disagreement about its result, or continuing after `disconnected` or a capacity timeout.
 
 Start a new thread, and hand over the needed conclusions in the task file, when:
 - it is a new task or goal (even with the same directory and role)

@@ -1,3 +1,4 @@
+name = "explore"
 description = "Read-only: locates entry points, call paths and file ownership for a well-scoped code question"
 model_reasoning_effort = "medium"
 sandbox_mode = "read-only"

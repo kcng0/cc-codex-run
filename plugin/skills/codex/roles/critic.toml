@@ -1,3 +1,4 @@
+name = "critic"
 description = "Read-only review of a high-impact decision: goals, scope, assumptions, acceptance criteria; flags risks that would change the plan"
 model_reasoning_effort = "high"
 sandbox_mode = "read-only"

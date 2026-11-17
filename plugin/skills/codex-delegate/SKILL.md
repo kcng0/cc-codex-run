@@ -1,6 +1,6 @@
 ---
 name: codex-delegate
-description: Delegation policy for handing work to Codex — implementation of modules whose interface contract is fixed, independent verification, and pre-commit review. Use when deciding whether and how to hand a piece of work to Codex.
+description: Policy for handing implementation, independent verification and pre-commit review to Codex — what each task must contain and how to weigh what comes back. Use before dispatching any of these to Codex, including when the user has already asked for it, and when deciding whether a piece of work should go to Codex.
 ---
 
 # Handing work to Codex
@@ -36,13 +36,15 @@ Use it when the user asks, or when the change is high-risk: schema or data migra
    - the working directory
    - the scope of the change (files or diff)
    - the expected behavior
-   - the real entry point
+   - the real entry point, and what the verifier may use to trigger it: a sandbox wide enough, the database, ports, starting a server
 
-   Fill in anything missing before dispatching.
-2. Use the `check` role with `--schema <codex skill dir>/schemas/check.json` (the schema the `codex` skill ships), so the result comes back as structured counterexamples. If Codex wrote the change, verify with a different model than the author's (`-m`).
-3. Weigh each counterexample before acting on it. A concrete input, an `expected_source` outside the code under test and an obvious fix are enough: just fix it. Check it yourself first when something looks off: the expected value is inferred rather than sourced, the input is not reachable from the real entry point, it contradicts what you know about the code, or the fix would change a contract or design. If it does not hold, resume the thread with your evidence (the `codex` skill's "Treating results").
+   Fill in anything missing before dispatching. Describe the change by its contract and expected behavior. Leave out the author's report and reasoning, any claim that it already passes, and your own verdict, so the verifier forms its own view.
+2. Pick the verifier by who wrote the change. Independence comes mostly from a fresh context and from exercising the real entry point against expected values sourced outside the code. A verifier from a different provider than the author shares fewer blind spots; another model from the same provider adds little.
+   - **Claude wrote it** (you or your subagents): use Codex's `check` role on its default model, with `--schema <codex skill dir>/schemas/check.json` (the schema the `codex` skill ships), so the result comes back as structured counterexamples.
+   - **Codex wrote it**: dispatch a fresh Claude subagent, not a fork, since a fork carries your context. Its prompt is the task file plus the `developer_instructions` from `<codex skill dir>/roles/check.toml`, and it reports the fields of `<codex skill dir>/schemas/check.json`. If you cannot start a subagent, use Codex's `check` role on its default model. A new thread gives an independent view; resuming the author's thread is cheaper and already knows the code but carries the author's reasoning and blind spots. The more the change depends on independent judgement, the more a new thread is worth.
+3. Weigh each counterexample before acting on it. A concrete input, an `expected_source` outside the code under test and an obvious fix are enough: just fix it. Check it yourself first when something looks off: the expected value is inferred rather than sourced, the input is not reachable from the real entry point, it contradicts what you know about the code, or the fix would change a contract or design. If it does not hold, take your evidence back to the verifier (for Codex, the `codex` skill's "Treating results").
 4. A clean result is only as strong as its `coverage`. If `not_covered` includes the risky part of the change, extend the verification or tell the user.
-5. After fixing, resume the same thread by id to re-verify. If counterexamples are still open after two rounds, hand them to the user.
+5. After fixing, continue the same verifier to re-verify: the Codex thread by id, or the same subagent. If counterexamples are still open after two rounds, hand them to the user.
 
 ## Pre-commit review
 
