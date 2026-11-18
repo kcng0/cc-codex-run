@@ -86,7 +86,7 @@ Codex 提问时，运行以 `status=question` 退出，打印问题和要执行�
 # ~/.codex/agents/implement.toml
 name = "implement"                # 同一文件也作为 Codex agent role 时 Codex 要求此字段；codex-run 按文件名查找
 description = "在明确的文件归属内实现一个模块"
-model = "gpt-6.1-sol"             # 可选，取自 `codex-run --models`；不写则用 Codex 配置
+model = "gpt-6.2-sol"             # 可选，取自 `codex-run --models`；不写则用 Codex 配置
 model_reasoning_effort = "high"   # 可选
 sandbox_mode = "workspace-write"  # 可选：read-only | workspace-write | danger-full-access
 developer_instructions = """

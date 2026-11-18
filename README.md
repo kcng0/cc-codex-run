@@ -75,7 +75,7 @@ To customize a role, create a file of the same name in `$CODEX_HOME/agents/`; it
 # ~/.codex/agents/implement.toml
 name = "implement"                # Codex requires it when the file is also a Codex agent role; codex-run goes by the file name
 description = "Implements one module within an explicit file ownership"
-model = "gpt-6.1-sol"             # optional, from `codex-run --models`; omit to use your Codex config
+model = "gpt-6.2-sol"             # optional, from `codex-run --models`; omit to use your Codex config
 model_reasoning_effort = "high"   # optional
 sandbox_mode = "workspace-write"  # optional: read-only | workspace-write | danger-full-access
 developer_instructions = """
