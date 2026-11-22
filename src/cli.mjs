@@ -10,6 +10,7 @@ import Ajv from "ajv";
 import { UsageError, ensureDaemon } from "./env.mjs";
 import { ConnectionClosed, RpcError, control, listAll } from "./rpc.mjs";
 import { SANDBOX_MODES, listRoles, loadRole } from "./roles.mjs";
+import { resolveJob, waitJob } from "./jobs.mjs";
 import { run } from "./run.mjs";
 import { installSignalHandlers } from "./signals.mjs";
 
@@ -22,6 +23,7 @@ const HELP = `usage: codex-run [--role ROLE] [-m MODEL] [-e EFFORT] [-s SANDBOX]
        codex-run --answer THREAD -C DIR [--role ROLE] [--schema FILE] ANSWER_FILE
        codex-run --attach THREAD -C DIR
        codex-run --review [--base BRANCH | --commit SHA] -C DIR [FOCUS_FILE]
+       codex-run --wait JOB [-t SECONDS] [--json]
        codex-run --models | --roles | --ps | --stop THREAD | --version | -h
        codex-run --install-skills [DIR] [--force]
 
@@ -44,6 +46,9 @@ options:
   --resume THREAD       continue an existing thread with a new turn
   --answer THREAD       reply to status=question; THREAD is the question thread printed in that output
   --attach THREAD       follow the turn in progress on THREAD again without sending input
+  --wait JOB            block until the run of JOB (printed as codex-run: job=... when it starts) ends, then
+                        print its result; after -t seconds (default 540) print status=running and exit 0.
+                        Only reads the job directory: never interrupts the turn
   --review              read-only built-in review, uncommitted changes by default
   --base BRANCH         review against a branch
   --commit SHA          review one commit
@@ -90,6 +95,7 @@ function parseCli(argv) {
         roles: { type: "boolean" },
         ps: { type: "boolean" },
         stop: { type: "string" },
+        wait: { type: "string" },
         "install-skills": { type: "boolean" },
         force: { type: "boolean" },
       },
@@ -187,6 +193,31 @@ function formatText(r) {
   return out.join("\n");
 }
 
+const exitCode = (status) => (status === "ok" || status === "question" ? 0 : 1);
+
+async function waitFor(arg, seconds, json) {
+  const job = resolveJob(arg);
+  const w = await waitJob(job, seconds);
+  if (w.result) {
+    process.stdout.write((json ? JSON.stringify(w.result) : formatText(w.result)) + "\n");
+    return exitCode(w.result.status);
+  }
+  const meta = w.running || w.orphaned;
+  const r = w.running
+    ? { status: "running", job, session: meta.thread ?? null, elapsed: meta.started ? Math.floor(Date.now() / 1000) - meta.started : null }
+    : { status: "orphaned", job, session: meta.thread ?? null,
+        error: `the client (pid ${meta.pid}) exited without writing a result; its own output has the error.`
+          + (meta.thread ? ` If the turn is still running (--ps), follow it with --attach ${meta.thread} -C ${meta.cwd}` : "") };
+  if (json) process.stdout.write(JSON.stringify(r) + "\n");
+  else {
+    const out = [`status=${r.status}`, `job=${r.job}`, `session=${show(r.session)}`];
+    if (w.running) out.push(`elapsed=${show(r.elapsed)}s`, `still running: run --wait ${job} again`);
+    else out.push("--- error ---", r.error);
+    process.stdout.write(out.join("\n") + "\n");
+  }
+  return w.running ? 0 : 1;
+}
+
 async function listModels() {
   const { sock } = ensureDaemon();
   const models = await control(sock, VERSION, (cl) => listAll(cl, "model/list", {}));
@@ -272,13 +303,14 @@ export async function main(argv) {
   if (o.models) { await listModels(); return 0; }
   if (o.ps) { await listRunning(); return 0; }
   if (o.stop) { await stopThread(o.stop); return 0; }
+  if (o.wait !== undefined) return waitFor(o.wait, o.timeout === undefined ? 540 : a.timeout, a.json);
   validateRun(a);
   const role = a.role !== undefined ? loadRole(a.role) : null;
   const { schema = null, validate = null } = a.schema ? loadSchema(a.schema) : {};
   installSignalHandlers();
   const r = await run(a, { role, schema, validate, version: VERSION });
   process.stdout.write((a.json ? JSON.stringify(r) : formatText(r)) + "\n");
-  return r.status === "ok" || r.status === "question" ? 0 : 1;
+  return exitCode(r.status);
 }
 
 main(process.argv.slice(2)).then(

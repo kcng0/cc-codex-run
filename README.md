@@ -56,10 +56,13 @@ codex-run --resume <thread> -C ~/repo follow-up.md      # next turn on the same 
 codex-run --answer <question thread> -C ~/repo answer.md
 codex-run --attach <thread> -C ~/repo
 codex-run --review --base main -C ~/repo [focus.md]
+codex-run --wait <job> [-t 540]                         # block until a background run ends
 codex-run --ps | --stop <thread> | --roles | --models
 ```
 
 A run prints `key=value` lines (or one JSON object with `--json`): `status`, `job`, `session`, `model`, `sandbox`, `report` and `commands`, then changed files, questions, or the error. It exits 0 for `ok` and `question`, and 1 for any other status. Run `codex-run -h` for every option.
+
+A run writes `codex-run: job=<dir>` to stderr as soon as it starts. `codex-run --wait <job>` blocks until that run ends and prints the same result, or prints `status=running` after `-t` seconds (default 540) and exits 0; it only reads the job directory and never interrupts the turn. It is meant for callers that are not reliably woken when a background command exits, such as Claude Code subagents.
 
 When Codex asks something, the run exits with `status=question` and prints the questions with the `--answer` command to run; the turn keeps waiting on the daemon, and `--answer` sends the reply into that same turn. If the question was already answered in the Codex app or by another client, `--answer` sends nothing, prints `not_sent=` and `prior_reply=`, and follows the turn instead.
 
@@ -131,7 +134,7 @@ The recommended setup: give every role that needs MCP tools, script-running skil
 | `CODEX_RUN_HOME` | `$XDG_STATE_HOME/codex-run` or `~/.local/state/codex-run` | job directories in `jobs/` |
 | `CODEX_RUN_JOB_TTL_DAYS` | `7` | finished jobs older than this are pruned at start; `0` disables |
 
-Each job directory holds `task.md`, `report.md`, `meta.json`, `events.jsonl` and, when present, `commands.jsonl`, `questions.json` and `stderr.log`.
+Each job directory holds `task.md`, `report.md`, `meta.json`, `events.jsonl`, `result.json` (written last; `--wait` prints it) and, when present, `commands.jsonl`, `questions.json` and `stderr.log`.
 
 ## Before you use it
 

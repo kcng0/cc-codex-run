@@ -80,6 +80,8 @@ export async function run(a, { role, schema, validate, version }) {
   const text = a.task ? fs.readFileSync(a.task, "utf8") : "";
   pruneJobs({ keep: [a.task, a.schema].filter(Boolean).map((f) => fs.realpathSync(f)) });
   const job = createJob();
+  // Announced before anything can block, so a caller that misses the exit notification can --wait on it
+  process.stderr.write(`codex-run: job=${job}\n`);
   if (a.task) fs.writeFileSync(`${job}/task.md`, text);
   const meta = {
     pid: process.pid, role: a.role ?? null, model: s.model, effort: s.effort, sandbox: s.sandbox, cwd: a.dir,
@@ -87,6 +89,7 @@ export async function run(a, { role, schema, validate, version }) {
     started: Math.floor(Date.now() / 1000), timeout: a.timeout, idle: a.idle,
   };
   if (a.schema) meta.schema = path.resolve(a.schema);
+  fs.writeFileSync(`${job}/meta.json`, JSON.stringify(meta));
   const eventsFd = fs.openSync(`${job}/events.jsonl`, "w");
   let tid = "", status = "failed", report = "", err = "";
   let questions = [], questionThread = null;
@@ -419,7 +422,7 @@ export async function run(a, { role, schema, validate, version }) {
 
   const failedCommands = commands.filter((c) => c.exitCode !== 0).length;
   const answerThread = questionThread || tid;
-  return {
+  const result = {
     status, job, session: tid, model: meta.model, effort: meta.effort, sandbox: meta.sandbox,
     report: `${job}/report.md`, error: status === "ok" || status === "question" ? null : err,
     commands: a.review ? null : { file: commands.length ? `${job}/commands.jsonl` : null, count: commands.length, failed: failedCommands },
@@ -432,4 +435,8 @@ export async function run(a, { role, schema, validate, version }) {
         "<answer file>"].join(" ")
       : null,
   };
+  // Written last and atomically: its presence is what --wait treats as the run having ended
+  fs.writeFileSync(`${job}/result.json.tmp`, JSON.stringify(result));
+  fs.renameSync(`${job}/result.json.tmp`, `${job}/result.json`);
+  return result;
 }

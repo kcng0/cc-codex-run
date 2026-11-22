@@ -1,7 +1,7 @@
 // Per-run job directories (task, events, report, commands) and age-based pruning.
 import fs from "node:fs";
 import path from "node:path";
-import { runHome } from "./env.mjs";
+import { UsageError, runHome } from "./env.mjs";
 
 const DAY_MS = 86_400_000;
 const PIN_TTL_DAYS = 90;
@@ -27,6 +27,40 @@ export function recallSandbox(tid) {
 export function createJob() {
   fs.mkdirSync(jobsRoot(), { recursive: true, mode: 0o700 });
   return fs.mkdtempSync(path.join(jobsRoot(), "job-"));
+}
+
+// A job given as printed (a path) or by its directory name
+export function resolveJob(arg) {
+  const dir = arg.includes("/") ? path.resolve(arg) : path.join(jobsRoot(), arg);
+  if (!fs.existsSync(path.join(dir, "meta.json"))) throw new UsageError(`not a codex-run job directory: ${arg}`);
+  return dir;
+}
+
+const readJson = (f) => {
+  try {
+    return JSON.parse(fs.readFileSync(f, "utf8"));
+  } catch (e) {
+    if (e.code === "ENOENT") return null;
+    throw e;
+  }
+};
+
+// Blocks until the job's client has written result.json, its client died without one, or seconds elapse.
+// Only reads the job directory: never touches the turn on the daemon.
+export async function waitJob(job, seconds, pollMs = 1000) {
+  const deadline = Date.now() + seconds * 1000;
+  for (;;) {
+    const result = readJson(path.join(job, "result.json"));
+    if (result) return { result };
+    const meta = readJson(path.join(job, "meta.json")) || {};
+    if (meta.pid && !alive(meta.pid)) {
+      // The client may have written result.json between the two reads
+      const late = readJson(path.join(job, "result.json"));
+      return late ? { result: late } : { orphaned: meta };
+    }
+    if (Date.now() >= deadline) return { running: meta };
+    await new Promise((r) => setTimeout(r, Math.min(pollMs, Math.max(0, deadline - Date.now()))));
+  }
 }
 
 const alive = (pid) => {

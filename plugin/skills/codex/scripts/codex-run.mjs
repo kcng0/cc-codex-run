@@ -11735,10 +11735,6 @@ function listRoles() {
   return [...seen.values()].sort((x, y) => x.name.localeCompare(y.name));
 }
 
-// src/run.mjs
-import fs5 from "node:fs";
-import path4 from "node:path";
-
 // src/jobs.mjs
 import fs4 from "node:fs";
 import path3 from "node:path";
@@ -11762,6 +11758,33 @@ function recallSandbox(tid) {
 function createJob() {
   fs4.mkdirSync(jobsRoot(), { recursive: true, mode: 448 });
   return fs4.mkdtempSync(path3.join(jobsRoot(), "job-"));
+}
+function resolveJob(arg) {
+  const dir = arg.includes("/") ? path3.resolve(arg) : path3.join(jobsRoot(), arg);
+  if (!fs4.existsSync(path3.join(dir, "meta.json"))) throw new UsageError(`not a codex-run job directory: ${arg}`);
+  return dir;
+}
+var readJson = (f) => {
+  try {
+    return JSON.parse(fs4.readFileSync(f, "utf8"));
+  } catch (e) {
+    if (e.code === "ENOENT") return null;
+    throw e;
+  }
+};
+async function waitJob(job, seconds, pollMs = 1e3) {
+  const deadline = Date.now() + seconds * 1e3;
+  for (; ; ) {
+    const result = readJson(path3.join(job, "result.json"));
+    if (result) return { result };
+    const meta = readJson(path3.join(job, "meta.json")) || {};
+    if (meta.pid && !alive(meta.pid)) {
+      const late = readJson(path3.join(job, "result.json"));
+      return late ? { result: late } : { orphaned: meta };
+    }
+    if (Date.now() >= deadline) return { running: meta };
+    await new Promise((r) => setTimeout(r, Math.min(pollMs, Math.max(0, deadline - Date.now()))));
+  }
 }
 var alive = (pid) => {
   try {
@@ -11806,6 +11829,10 @@ function pruneJobs({ keep = [], now = Date.now() } = {}) {
     }
   }
 }
+
+// src/run.mjs
+import fs5 from "node:fs";
+import path4 from "node:path";
 
 // src/turns.mjs
 var AnswerError = class extends Error {
@@ -11926,6 +11953,8 @@ async function run(a, { role, schema, validate, version }) {
   const text = a.task ? fs5.readFileSync(a.task, "utf8") : "";
   pruneJobs({ keep: [a.task, a.schema].filter(Boolean).map((f) => fs5.realpathSync(f)) });
   const job = createJob();
+  process.stderr.write(`codex-run: job=${job}
+`);
   if (a.task) fs5.writeFileSync(`${job}/task.md`, text);
   const meta = {
     pid: process.pid,
@@ -11940,6 +11969,7 @@ async function run(a, { role, schema, validate, version }) {
     idle: a.idle
   };
   if (a.schema) meta.schema = path4.resolve(a.schema);
+  fs5.writeFileSync(`${job}/meta.json`, JSON.stringify(meta));
   const eventsFd = fs5.openSync(`${job}/events.jsonl`, "w");
   let tid = "", status = "failed", report = "", err = "";
   let questions = [], questionThread = null;
@@ -12262,7 +12292,7 @@ async function run(a, { role, schema, validate, version }) {
   fs5.writeFileSync(`${job}/meta.json`, JSON.stringify(meta));
   const failedCommands = commands.filter((c) => c.exitCode !== 0).length;
   const answerThread = questionThread || tid;
-  return {
+  const result = {
     status,
     job,
     session: tid,
@@ -12289,6 +12319,9 @@ async function run(a, { role, schema, validate, version }) {
       "<answer file>"
     ].join(" ") : null
   };
+  fs5.writeFileSync(`${job}/result.json.tmp`, JSON.stringify(result));
+  fs5.renameSync(`${job}/result.json.tmp`, `${job}/result.json`);
+  return result;
 }
 
 // src/cli.mjs
@@ -12299,6 +12332,7 @@ var HELP = `usage: codex-run [--role ROLE] [-m MODEL] [-e EFFORT] [-s SANDBOX] [
        codex-run --answer THREAD -C DIR [--role ROLE] [--schema FILE] ANSWER_FILE
        codex-run --attach THREAD -C DIR
        codex-run --review [--base BRANCH | --commit SHA] -C DIR [FOCUS_FILE]
+       codex-run --wait JOB [-t SECONDS] [--json]
        codex-run --models | --roles | --ps | --stop THREAD | --version | -h
        codex-run --install-skills [DIR] [--force]
 
@@ -12321,6 +12355,9 @@ options:
   --resume THREAD       continue an existing thread with a new turn
   --answer THREAD       reply to status=question; THREAD is the question thread printed in that output
   --attach THREAD       follow the turn in progress on THREAD again without sending input
+  --wait JOB            block until the run of JOB (printed as codex-run: job=... when it starts) ends, then
+                        print its result; after -t seconds (default 540) print status=running and exit 0.
+                        Only reads the job directory: never interrupts the turn
   --review              read-only built-in review, uncommitted changes by default
   --base BRANCH         review against a branch
   --commit SHA          review one commit
@@ -12366,6 +12403,7 @@ function parseCli(argv) {
         roles: { type: "boolean" },
         ps: { type: "boolean" },
         stop: { type: "string" },
+        wait: { type: "string" },
         "install-skills": { type: "boolean" },
         force: { type: "boolean" }
       }
@@ -12477,6 +12515,30 @@ function formatText(r) {
   }
   return out.join("\n");
 }
+var exitCode = (status) => status === "ok" || status === "question" ? 0 : 1;
+async function waitFor(arg, seconds, json) {
+  const job = resolveJob(arg);
+  const w = await waitJob(job, seconds);
+  if (w.result) {
+    process.stdout.write((json ? JSON.stringify(w.result) : formatText(w.result)) + "\n");
+    return exitCode(w.result.status);
+  }
+  const meta = w.running || w.orphaned;
+  const r = w.running ? { status: "running", job, session: meta.thread ?? null, elapsed: meta.started ? Math.floor(Date.now() / 1e3) - meta.started : null } : {
+    status: "orphaned",
+    job,
+    session: meta.thread ?? null,
+    error: `the client (pid ${meta.pid}) exited without writing a result; its own output has the error.` + (meta.thread ? ` If the turn is still running (--ps), follow it with --attach ${meta.thread} -C ${meta.cwd}` : "")
+  };
+  if (json) process.stdout.write(JSON.stringify(r) + "\n");
+  else {
+    const out = [`status=${r.status}`, `job=${r.job}`, `session=${show(r.session)}`];
+    if (w.running) out.push(`elapsed=${show(r.elapsed)}s`, `still running: run --wait ${job} again`);
+    else out.push("--- error ---", r.error);
+    process.stdout.write(out.join("\n") + "\n");
+  }
+  return w.running ? 0 : 1;
+}
 async function listModels() {
   const { sock } = ensureDaemon();
   const models = await control(sock, VERSION, (cl) => listAll(cl, "model/list", {}));
@@ -12581,13 +12643,14 @@ async function main(argv) {
     await stopThread(o.stop);
     return 0;
   }
+  if (o.wait !== void 0) return waitFor(o.wait, o.timeout === void 0 ? 540 : a.timeout, a.json);
   validateRun(a);
   const role = a.role !== void 0 ? loadRole(a.role) : null;
   const { schema = null, validate = null } = a.schema ? loadSchema(a.schema) : {};
   installSignalHandlers();
   const r = await run(a, { role, schema, validate, version: VERSION });
   process.stdout.write((a.json ? JSON.stringify(r) : formatText(r)) + "\n");
-  return r.status === "ok" || r.status === "question" ? 0 : 1;
+  return exitCode(r.status);
 }
 main(process.argv.slice(2)).then(
   (code) => process.stdout.write("", () => process.exit(code)),

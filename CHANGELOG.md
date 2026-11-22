@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Subagents no longer sit idle after a background run has ended. Claude Code often does not deliver a background command's completion notification to a subagent, and the `codex` skill told every caller to end its turn and wait for it. A run now writes `codex-run: job=<dir>` to stderr when it starts, and the new `codex-run --wait <job> [-t SECONDS]` blocks in the foreground until the run ends and prints its result, or prints `status=running` after `-t` (default 540 s, inside the Bash timeout); a client that died without a result gives `status=orphaned`. `--wait` only reads the job directory and never interrupts the turn. The skill keeps the notification for the main session and has subagents poll with `--wait`, and explains why a foreground dispatch with a Bash timeout is not a substitute (the timeout's SIGTERM interrupts the turn). Each job now also holds `result.json`.
+
 ## 0.1.6 — 2026-11-17
 
 - A model that stays at capacity after Codex's own retries now ends the run with `status=capacity` instead of being retried on the same thread for up to the wall-clock limit (the old backoff could hold a run for hours, visible only by polling). The error names the model and the kept thread, and the `codex` skill has Claude check for partial edits and retry the original task on a new thread with the same model.

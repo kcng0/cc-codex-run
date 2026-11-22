@@ -56,6 +56,7 @@ codex-run --resume <thread> -C ~/repo follow-up.md      # 在同一会话上开�
 codex-run --answer <提问线程> -C ~/repo answer.md
 codex-run --attach <thread> -C ~/repo
 codex-run --review --base main -C ~/repo [focus.md]
+codex-run --wait <job> [-t 540]                         # 阻塞等待后台运行结束
 codex-run --ps | --stop <thread> | --roles | --models
 ```
 
@@ -66,6 +67,8 @@ codex-run --ps | --stop <thread> | --roles | --models
 - 退出码：`ok` 和 `question` 为 0，其余状态为 1。
 
 全部参数见 `codex-run -h`。
+
+运行一开始就往 stderr 写一行 `codex-run: job=<dir>`。`codex-run --wait <job>` 阻塞到该运行结束并输出同样的结果；超过 `-t` 秒（默认 540）仍未结束则输出 `status=running` 并以 0 退出。它只读 job 目录，不会中断 turn，供后台命令结束时不一定被唤醒的调用方使用，例如 Claude Code 子代理。
 
 Codex 提问时，运行以 `status=question` 退出，打印问题和要执行的 `--answer` 命令；turn 留在 daemon 上等待，`--answer` 把答复送回同一个 turn。如果问题已经在 Codex app 或其他客户端里答过，`--answer` 不再发送，输出 `not_sent=` 和 `prior_reply=`，改为跟随该 turn。
 
@@ -153,7 +156,7 @@ Codex 没有全局的 MCP 审批开关，只能按 server 单独设置（`[mcp_s
 | `CODEX_RUN_HOME` | `$XDG_STATE_HOME/codex-run`，未设置时为 `~/.local/state/codex-run` | job 目录放在 `jobs/` |
 | `CODEX_RUN_JOB_TTL_DAYS` | `7` | 启动时清理早于这个天数的已结束 job；`0` 表示不清理 |
 
-每个 job 目录包含 `task.md`、`report.md`、`meta.json`、`events.jsonl`，以及按需生成的 `commands.jsonl`、`questions.json` 和 `stderr.log`。
+每个 job 目录包含 `task.md`、`report.md`、`meta.json`、`events.jsonl`、`result.json`（最后写入，`--wait` 输出的就是它），以及按需生成的 `commands.jsonl`、`questions.json` 和 `stderr.log`。
 
 ## 使用须知
 

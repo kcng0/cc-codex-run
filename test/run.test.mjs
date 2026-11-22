@@ -480,3 +480,51 @@ test("a turn that fails at capacity ends the run with status=capacity instead of
   assert.match(r.stdout, /new thread with the same model \(-m m-1\)/);
   assert.match(r.stdout, /Thread R is kept/);
 });
+
+// Callers that miss the background exit notification (subagents) poll with --wait in the foreground
+test("--wait reports running without touching the turn, then prints the run's own result once it ends", async () => {
+  let peer;
+  const srv = await fakeServer(dir, (m, p) => {
+    if (m.method === "thread/start") return p.respond(m.id, opened("R"));
+    if (m.method === "turn/start") { peer = p; p.respond(m.id, { turn: { id: "T1" } }); }
+    if (m.method === "turn/interrupt") p.respond(m.id, {});
+  });
+  let announced;
+  const job = new Promise((resolve) => (announced = resolve));
+  const running = runCli(["-C", dir, task], { dir, sock: srv.sock, onSpawn: (c) => {
+    let buf = "";
+    c.stderr.on("data", (d) => { const m = /codex-run: job=(\S+)/.exec((buf += d)); if (m) announced(m[1]); });
+  } });
+  const jobDir = await job;
+  while (!peer) await new Promise((r) => setTimeout(r, 50));
+
+  const early = await runCli(["--wait", path.basename(jobDir), "-t", "1"], { dir });
+  assert.equal(early.code, 0, early.stdout + early.stderr);
+  assert.equal(early.fields.status, "running");
+  assert.equal(early.fields.session, "R");
+
+  const waiting = runCli(["--wait", jobDir, "-t", "30"], { dir });
+  peer.notify("item/completed", { threadId: "R", turnId: "T1", item: agentMessage("done") });
+  peer.notify("turn/completed", { threadId: "R", turn: { id: "T1", status: "completed" } });
+  const [own, waited] = await Promise.all([running, waiting]);
+  await srv.close();
+  assert.equal(own.fields.status, "ok", own.stdout + own.stderr);
+  assert.equal(waited.code, 0);
+  assert.equal(waited.stdout, own.stdout);
+  assert.equal(srv.calls("turn/interrupt").length, 0);
+});
+
+test("--wait on a job whose client died without a result reports orphaned with the --attach thread", async () => {
+  let child;
+  const srv = await fakeServer(dir, (m, p) => {
+    if (m.method === "thread/start") return p.respond(m.id, opened("R"));
+    if (m.method === "turn/start") { p.respond(m.id, { turn: { id: "T1" } }); setTimeout(() => child.kill("SIGKILL"), 200); }
+  });
+  const r = await runCli(["-C", dir, task], { dir, sock: srv.sock, onSpawn: (c) => (child = c) });
+  await srv.close();
+  const jobDir = /codex-run: job=(\S+)/.exec(r.stderr)[1];
+  const w = await runCli(["--wait", jobDir, "-t", "5"], { dir });
+  assert.equal(w.code, 1);
+  assert.equal(w.fields.status, "orphaned", w.stdout);
+  assert.match(w.stdout, /--attach R -C /);
+});
