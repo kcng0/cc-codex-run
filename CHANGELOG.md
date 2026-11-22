@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.1.7 — 2026-11-22
 
 - Subagents no longer sit idle after a background run has ended. Claude Code often does not deliver a background command's completion notification to a subagent, and the `codex` skill told every caller to end its turn and wait for it. A run now writes `codex-run: job=<dir>` to stderr when it starts, and the new `codex-run --wait <job> [-t SECONDS]` blocks in the foreground until the run ends and prints its result, or prints `status=running` after `-t` (default 540 s, inside the Bash timeout); a client that died without a result gives `status=orphaned`. `--wait` only reads the job directory and never interrupts the turn. The skill keeps the notification for the main session and has subagents poll with `--wait`, and explains why a foreground dispatch with a Bash timeout is not a substitute (the timeout's SIGTERM interrupts the turn). Each job now also holds `result.json`.
 
